@@ -209,10 +209,26 @@
       ctx.textAlign = 'left';
     }
 
+    // Difficulté dynamique (basée sur le temps de survie)
+    let diff = {};
+    function updateDifficulty() {
+      const t = finalTime / 1000; // secondes écoulées
+      diff = {
+        spawnInterval: Math.max(55,  Math.round(160 - t * 0.35)),
+        enemySpeed:    Math.min(2.4, 1.2  + t * 0.004),
+        enemyHp:       Math.max(1,   Math.floor(3 + t * 0.013)),
+        bulletFast:    Math.min(5.0, 3.2  + t * 0.006),
+        bulletSlow:    Math.min(4.5, 2.8  + t * 0.0057),
+        shootCD:       Math.max(45,  Math.round(90 - t * 0.15)),
+        niveau:        Math.min(10,  Math.floor(1 + t / 30)),
+      };
+    }
+
+    updateDifficulty(); // initialise diff avec les valeurs de base
+
     // Enemies
     const enemies = [];
     let spawnTimer = 0;
-    const SPAWN_INTERVAL = 160;
 
     function spawnEnemy() {
       let x, y;
@@ -223,7 +239,7 @@
       else                 { x = 0; y = Math.random() * MAP_SIZE; }
       const patterns = ['single', 'spread', 'circle', 'burst', 'double'];
       const pattern = patterns[Math.floor(Math.random() * patterns.length)];
-      enemies.push({ x, y, hp: 3, shootTimer: Math.floor(Math.random() * 90), angle: 0, pattern, burstCount: 0, burstTimer: 0 });
+      enemies.push({ x, y, hp: diff.enemyHp, shootTimer: Math.floor(Math.random() * 90), angle: 0, pattern, burstCount: 0, burstTimer: 0 });
     }
 
     function drawEnemyFace(x, y, angle) {
@@ -273,20 +289,20 @@
         const e = enemies[i];
         const angle = Math.atan2(player.y - e.y, player.x - e.x);
         e.angle = angle;
-        e.x += Math.cos(angle) * 1.2;
-        e.y += Math.sin(angle) * 1.2;
+        e.x += Math.cos(angle) * diff.enemySpeed;
+        e.y += Math.sin(angle) * diff.enemySpeed;
 
         if (e.burstCount > 0) {
           e.burstTimer++;
           if (e.burstTimer >= 10) {
             e.burstTimer = 0;
             e.burstCount--;
-            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(e.angle) * 3.2, vy: Math.sin(e.angle) * 3.2 });
+            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(e.angle) * diff.bulletFast, vy: Math.sin(e.angle) * diff.bulletFast });
           }
         }
 
         e.shootTimer++;
-        const shootCD = e.pattern === 'circle' ? 120 : e.pattern === 'burst' ? 100 : 90;
+        const shootCD = e.pattern === 'circle' ? diff.shootCD + 30 : e.pattern === 'burst' ? diff.shootCD + 10 : diff.shootCD;
         if (e.shootTimer >= shootCD) {
           e.shootTimer = 0;
           const a = angle;
@@ -295,12 +311,12 @@
           } else if (e.pattern === 'spread') {
             for (let s = -2; s <= 2; s++) {
               const sa = a + s * 0.28;
-              enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(sa) * 2.8, vy: Math.sin(sa) * 2.8 });
+              enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(sa) * diff.bulletSlow, vy: Math.sin(sa) * diff.bulletSlow });
             }
           } else if (e.pattern === 'circle') {
             for (let k = 0; k < 8; k++) {
               const ca = (k / 8) * Math.PI * 2;
-              enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(ca) * 2.8, vy: Math.sin(ca) * 2.8 });
+              enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(ca) * diff.bulletSlow, vy: Math.sin(ca) * diff.bulletSlow });
             }
           } else if (e.pattern === 'burst') {
             e.burstCount = 3;
@@ -308,8 +324,8 @@
             enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 3.2, vy: Math.sin(a) * 3.2 });
           } else if (e.pattern === 'double') {
             const px = -Math.sin(a) * 8, py = Math.cos(a) * 8;
-            enemyBullets.push({ x: e.x + px, y: e.y + py, vx: Math.cos(a) * 2.8, vy: Math.sin(a) * 2.8 });
-            enemyBullets.push({ x: e.x - px, y: e.y - py, vx: Math.cos(a) * 2.8, vy: Math.sin(a) * 2.8 });
+            enemyBullets.push({ x: e.x + px, y: e.y + py, vx: Math.cos(a) * diff.bulletSlow, vy: Math.sin(a) * diff.bulletSlow });
+            enemyBullets.push({ x: e.x - px, y: e.y - py, vx: Math.cos(a) * diff.bulletSlow, vy: Math.sin(a) * diff.bulletSlow });
           }
         }
 
@@ -381,6 +397,9 @@
       ctx.fillStyle = '#ffaa00'; ctx.fillText(`TIR  ${(60 / player.fireCD).toFixed(1)}/s`, 10, 60);
       ctx.fillStyle = 'white';  ctx.fillText(`Ennemis : ${enemies.length}`, 10, 76);
       ctx.fillStyle = '#ff6666'; ctx.fillText(`Tués   : ${kills}`, 10, 92);
+      const niv = diff.niveau || 1;
+      const nivColor = niv <= 3 ? '#88ff88' : niv <= 6 ? '#ffaa00' : '#ff4444';
+      ctx.fillStyle = nivColor; ctx.fillText(`Niveau : ${niv}`, 10, 108);
 
       // Timer (centré en haut)
       ctx.fillStyle = 'white';
@@ -451,6 +470,7 @@
         return;
       }
       finalTime = Date.now() - gameStartTime;
+      updateDifficulty();
 
       let dx = 0, dy = 0;
       if (keys['z']) dy -= 1;
@@ -462,7 +482,7 @@
       player.y = Math.max(RADIUS, Math.min(MAP_SIZE - RADIUS, player.y + dy * player.speed));
 
       spawnTimer++;
-      if (spawnTimer >= SPAWN_INTERVAL) { spawnTimer = 0; spawnEnemy(); }
+      if (spawnTimer >= diff.spawnInterval) { spawnTimer = 0; spawnEnemy(); }
 
       updateEnemies();
       updateBullets();
