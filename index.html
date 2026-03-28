@@ -171,7 +171,7 @@
     // Enemies
     const enemies = [];
     let spawnTimer = 0;
-    const SPAWN_INTERVAL = 220;
+    const SPAWN_INTERVAL = 160;
     const ENEMY_RADIUS   = 18;
     const RADIUS = 20;
 
@@ -255,7 +255,7 @@
           if (e.burstTimer >= 10) {
             e.burstTimer = 0;
             e.burstCount--;
-            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(e.angle) * 2.5, vy: Math.sin(e.angle) * 2.5 });
+            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(e.angle) * 3.2, vy: Math.sin(e.angle) * 3.2 });
           }
         }
 
@@ -266,30 +266,30 @@
           const a = angle;
           if (e.pattern === 'single') {
             // Une balle précise
-            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.5, vy: Math.sin(a) * 2.5 });
+            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 3.2, vy: Math.sin(a) * 3.2 });
           } else if (e.pattern === 'spread') {
             // 5 balles en éventail large
             for (let s = -2; s <= 2; s++) {
               const sa = a + s * 0.28;
-              enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(sa) * 2, vy: Math.sin(sa) * 2 });
+              enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(sa) * 2.8, vy: Math.sin(sa) * 2.8 });
             }
           } else if (e.pattern === 'circle') {
             // 8 balles dans toutes les directions
             for (let k = 0; k < 8; k++) {
               const ca = (k / 8) * Math.PI * 2;
-              enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(ca) * 2, vy: Math.sin(ca) * 2 });
+              enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(ca) * 2.8, vy: Math.sin(ca) * 2.8 });
             }
           } else if (e.pattern === 'burst') {
             // Rafale de 4 balles rapprochées
             e.burstCount = 3;
             e.burstTimer = 0;
-            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.5, vy: Math.sin(a) * 2.5 });
+            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 3.2, vy: Math.sin(a) * 3.2 });
           } else if (e.pattern === 'double') {
             // 2 balles parallèles
             const px = -Math.sin(a) * 8;
             const py =  Math.cos(a) * 8;
-            enemyBullets.push({ x: e.x + px, y: e.y + py, vx: Math.cos(a) * 2, vy: Math.sin(a) * 2 });
-            enemyBullets.push({ x: e.x - px, y: e.y - py, vx: Math.cos(a) * 2, vy: Math.sin(a) * 2 });
+            enemyBullets.push({ x: e.x + px, y: e.y + py, vx: Math.cos(a) * 2.8, vy: Math.sin(a) * 2.8 });
+            enemyBullets.push({ x: e.x - px, y: e.y - py, vx: Math.cos(a) * 2.8, vy: Math.sin(a) * 2.8 });
           }
         }
 
