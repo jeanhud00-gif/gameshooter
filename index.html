@@ -336,8 +336,8 @@
         spawnInterval: Math.max(55,  Math.round(160 - t * 0.35)),
         enemySpeed:    Math.min(2.4, 1.2  + t * 0.004),
         enemyHp:       Math.max(1,   Math.floor(3 + t * 0.013)),
-        bulletFast:    Math.min(3.8, 2.8  + t * 0.002),
-        bulletSlow:    Math.min(3.4, 2.4  + t * 0.002),
+        bulletFast:    Math.min(3.2, 2.3  + t * 0.002),
+        bulletSlow:    Math.min(2.8, 2.0  + t * 0.002),
         shootCD:       Math.max(45,  Math.round(90 - t * 0.15)),
         niveau:        Math.min(10,  Math.floor(1 + t / 30)),
       };
@@ -431,7 +431,7 @@
           e.shootTimer = 0;
           const a = angle;
           if (e.pattern === 'single') {
-            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 3.2, vy: Math.sin(a) * 3.2 });
+            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.6, vy: Math.sin(a) * 2.6 });
           } else if (e.pattern === 'spread') {
             for (let s = -2; s <= 2; s++) {
               const sa = a + s * 0.28;
@@ -445,7 +445,7 @@
           } else if (e.pattern === 'burst') {
             e.burstCount = 3;
             e.burstTimer = 0;
-            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 3.2, vy: Math.sin(a) * 3.2 });
+            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.6, vy: Math.sin(a) * 2.6 });
           } else if (e.pattern === 'double') {
             const px = -Math.sin(a) * 8, py = Math.cos(a) * 8;
             enemyBullets.push({ x: e.x + px, y: e.y + py, vx: Math.cos(a) * diff.bulletSlow, vy: Math.sin(a) * diff.bulletSlow });
@@ -468,7 +468,7 @@
             }
           } else if (e.pattern === 'sniper') {
             // Long CD mais bullet ultra-rapide — difficile à esquiver
-            const speed = Math.min(7.5, diff.bulletFast * 1.6);
+            const speed = Math.min(5.5, diff.bulletFast * 1.5);
             enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed });
           }
         }
@@ -541,17 +541,17 @@
       const pad  = Math.round(10 * s);
       const lh   = Math.round(20 * s);
       const barW = Math.round(140 * s);
-      const barH = Math.round(12 * s);
+      const barH = Math.round(18 * s);
 
       // Panneau semi-transparent gauche
-      const panelW = barW + Math.round(50 * s);
+      const panelW = barW + Math.round(12 * s);
       const panelH = barH + lh * 4 + Math.round(28 * s);
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
       ctx.beginPath();
       ctx.roundRect(pad - 6, pad - 6, panelW, panelH, 8);
       ctx.fill();
 
-      // Barre HP
+      // Barre HP avec texte centré dedans
       const hpColor = player.hp > player.maxHp * 0.4 ? '#33dd33' : player.hp > player.maxHp * 0.2 ? '#ffaa00' : '#ff3333';
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillRect(pad, pad, barW, barH);
@@ -560,7 +560,9 @@
       ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1;
       ctx.strokeRect(pad, pad, barW, barH);
       ctx.font = `bold ${fs}px monospace`;
-      hudText(`❤ ${player.hp}/${player.maxHp}`, pad + barW + Math.round(6 * s), pad + barH - 1, 'white');
+      ctx.textAlign = 'center';
+      hudText(`❤ ${player.hp} / ${player.maxHp}`, pad + barW / 2, pad + barH - Math.round(3 * s), 'white');
+      ctx.textAlign = 'left';
 
       // Stats
       const y0 = pad + barH + lh;
