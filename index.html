@@ -252,9 +252,12 @@
     function loadBestTimes() {
       try {
         return (JSON.parse(localStorage.getItem('shooter_best_times')) || [])
-          .map(e => typeof e === 'number' ? { ms: e, kills: 0 } : e); // compat anciens scores
+          .map(e => typeof e === 'number' ? { ms: e, kills: 0 } : e)
+          .filter(e => e.ms < 3600000 * 2); // ignore scores > 2h (corrompus)
       } catch { return []; }
     }
+    // Nettoie une fois les scores corrompus déjà en mémoire
+    localStorage.setItem('shooter_best_times', JSON.stringify(loadBestTimes()));
 
     function saveBestTime(ms, kills) {
       const times = loadBestTimes();
@@ -360,7 +363,7 @@
     function updateDifficulty() {
       const t = finalTime / 1000; // secondes écoulées
       diff = {
-        spawnInterval: Math.max(45,  Math.round(160 - t * 0.50 - Math.max(0, (t - 150) * 0.18))),
+        spawnInterval: Math.max(48,  Math.round(160 - t * 0.50 - Math.max(0, (t - 150) * 0.18))),
         enemySpeed:    1.4,
         enemyHp:       2,
         bulletFast:    3.2,
