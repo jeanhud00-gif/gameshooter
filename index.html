@@ -30,6 +30,21 @@
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
 
+    // Musique
+    const music = new Audio('ivy.mp3');
+    music.loop   = true;
+    music.volume = 0.4;
+    function startMusic() {
+      if (!music.paused) return;
+      music.play().catch(() => {});
+    }
+    // Tentative autoplay immédiate (marche si le navigateur l'autorise)
+    startMusic();
+    // Fallback : clavier / souris / touch
+    document.addEventListener('keydown',    startMusic);
+    document.addEventListener('mousedown',  startMusic);
+    document.addEventListener('touchstart', startMusic);
+
     function getMapSize() {
       return { w: window.innerWidth, h: window.innerHeight };
     }
@@ -321,8 +336,8 @@
         spawnInterval: Math.max(55,  Math.round(160 - t * 0.35)),
         enemySpeed:    Math.min(2.4, 1.2  + t * 0.004),
         enemyHp:       Math.max(1,   Math.floor(3 + t * 0.013)),
-        bulletFast:    Math.min(4.2, 2.8  + t * 0.004),
-        bulletSlow:    Math.min(3.8, 2.4  + t * 0.004),
+        bulletFast:    Math.min(3.8, 2.8  + t * 0.002),
+        bulletSlow:    Math.min(3.4, 2.4  + t * 0.002),
         shootCD:       Math.max(45,  Math.round(90 - t * 0.15)),
         niveau:        Math.min(10,  Math.floor(1 + t / 30)),
       };
@@ -512,40 +527,62 @@
       }
     }
 
+    function hudText(text, x, y, color) {
+      // Ombre portée pour lisibilité sur n'importe quel fond
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillText(text, x + 1, y + 1);
+      ctx.fillStyle = color;
+      ctx.fillText(text, x, y);
+    }
+
     function drawHUD() {
-      const s       = isMobile ? Math.min(MAP_W, MAP_H) / 320 : 1;
-      const fs      = Math.round(13 * s);
-      const pad     = Math.round(12 * s);
-      const barW    = Math.round(130 * s);
-      const barH    = Math.round(14 * s);
+      const s    = isMobile ? Math.min(MAP_W, MAP_H) / 320 : 1;
+      const fs   = Math.round(14 * s);
+      const pad  = Math.round(10 * s);
+      const lh   = Math.round(20 * s);
+      const barW = Math.round(140 * s);
+      const barH = Math.round(12 * s);
+
+      // Panneau semi-transparent gauche
+      const panelW = barW + Math.round(50 * s);
+      const panelH = barH + lh * 4 + Math.round(28 * s);
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.beginPath();
+      ctx.roundRect(pad - 6, pad - 6, panelW, panelH, 8);
+      ctx.fill();
 
       // Barre HP
-      ctx.fillStyle = '#000';
-      ctx.fillRect(pad, pad, barW + 4, barH + 4);
-      ctx.fillStyle = player.hp > player.maxHp * 0.4 ? '#22cc22' : player.hp > player.maxHp * 0.2 ? '#ffaa00' : '#cc2222';
-      ctx.fillRect(pad + 2, pad + 2, barW * (player.hp / player.maxHp), barH);
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
-      ctx.strokeRect(pad, pad, barW + 4, barH + 4);
-      ctx.fillStyle = 'white'; ctx.font = `bold ${fs}px monospace`;
-      ctx.fillText('HP', pad + barW + 8, pad + barH);
+      const hpColor = player.hp > player.maxHp * 0.4 ? '#33dd33' : player.hp > player.maxHp * 0.2 ? '#ffaa00' : '#ff3333';
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(pad, pad, barW, barH);
+      ctx.fillStyle = hpColor;
+      ctx.fillRect(pad, pad, barW * (player.hp / player.maxHp), barH);
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1;
+      ctx.strokeRect(pad, pad, barW, barH);
+      ctx.font = `bold ${fs}px monospace`;
+      hudText(`❤ ${player.hp}/${player.maxHp}`, pad + barW + Math.round(6 * s), pad + barH - 1, 'white');
 
       // Stats
-      const lh = Math.round(18 * s);
-      const y0 = pad + barH + lh + 4;
-      ctx.font = `${fs}px monospace`;
-      ctx.fillStyle = '#00ccff'; ctx.fillText(`SPD ${player.speed.toFixed(1)}`,        pad, y0);
-      ctx.fillStyle = '#ffaa00'; ctx.fillText(`TIR ${(60/player.fireCD).toFixed(1)}/s`, pad, y0 + lh);
-      ctx.fillStyle = 'white';   ctx.fillText(`Ennemis : ${enemies.length}`,            pad, y0 + lh * 2);
-      ctx.fillStyle = '#ff6666'; ctx.fillText(`Tués : ${kills}`,                        pad, y0 + lh * 3);
+      const y0 = pad + barH + lh;
+      ctx.font = `bold ${fs}px monospace`;
+      hudText(`⚡ SPD  ${player.speed.toFixed(1)}`,          pad, y0,          '#00ddff');
+      hudText(`🔥 TIR  ${(60/player.fireCD).toFixed(1)}/s`,  pad, y0 + lh,     '#ffaa00');
+      hudText(`☠ TUÉS ${kills}`,                              pad, y0 + lh * 2, '#ff6677');
       const niv = diff.niveau || 1;
       const nivColor = niv <= 3 ? '#88ff88' : niv <= 6 ? '#ffaa00' : '#ff4444';
-      ctx.fillStyle = nivColor;  ctx.fillText(`Niv. ${niv}`,                            pad, y0 + lh * 4);
+      hudText(`★ NIV  ${niv}`,                                pad, y0 + lh * 3, nivColor);
 
-      // Timer centré en haut
-      ctx.fillStyle = 'white';
-      ctx.font = `bold ${Math.round(22 * s)}px monospace`;
+      // Timer centré en haut avec fond
+      const timerFont = Math.round(24 * s);
+      const timerText = formatTime(finalTime);
+      ctx.font = `bold ${timerFont}px monospace`;
+      const tw = ctx.measureText(timerText).width;
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.beginPath();
+      ctx.roundRect(MAP_W / 2 - tw / 2 - 10, pad - 6, tw + 20, timerFont + 8, 8);
+      ctx.fill();
       ctx.textAlign = 'center';
-      ctx.fillText(formatTime(finalTime), MAP_W / 2, pad + Math.round(18 * s));
+      hudText(timerText, MAP_W / 2, pad + timerFont - 2, 'white');
       ctx.textAlign = 'left';
     }
 
@@ -633,6 +670,8 @@
       gpFire = false;
       const gp = getGamepad();
       if (gp) {
+        // Démarre la musique dès qu'une manette est détectée
+        startMusic();
         // Stick gauche → déplacement
         const lx = Math.abs(gp.axes[0]) > 0.15 ? gp.axes[0] : 0;
         const ly = Math.abs(gp.axes[1]) > 0.15 ? gp.axes[1] : 0;
