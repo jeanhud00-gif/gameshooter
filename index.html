@@ -235,57 +235,7 @@
     const notifications = [];
 
     // Graphique projectiles
-    const bulletHistory = [];
-    const GRAPH_MAX_SAMPLES = 180;
-    let graphSampleTick = 0;
 
-    function updateBulletGraph() {
-      graphSampleTick++;
-      if (graphSampleTick % 4 !== 0) return;
-      bulletHistory.push(enemyBullets.length);
-      if (bulletHistory.length > GRAPH_MAX_SAMPLES) bulletHistory.shift();
-    }
-
-    function drawBulletGraph() {
-      const gW = 180, gH = 70;
-      const gX = MAP_W - gW - 12;
-      const gY = MAP_H - gH - 12;
-      const maxVal = Math.max(20, ...bulletHistory);
-
-      // Fond
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      ctx.beginPath(); ctx.roundRect(gX - 8, gY - 18, gW + 16, gH + 26, 8); ctx.fill();
-
-      // Label
-      ctx.font = 'bold 10px monospace';
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
-      ctx.textAlign = 'left';
-      ctx.fillText(`PROJECTILES  ${enemyBullets.length}`, gX, gY - 6);
-
-      // Ligne de base
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(gX, gY + gH); ctx.lineTo(gX + gW, gY + gH); ctx.stroke();
-
-      // Courbe
-      if (bulletHistory.length < 2) return;
-      ctx.beginPath();
-      ctx.strokeStyle = '#ff6633';
-      ctx.lineWidth = 1.5;
-      for (let i = 0; i < bulletHistory.length; i++) {
-        const x = gX + (i / (GRAPH_MAX_SAMPLES - 1)) * gW;
-        const y = gY + gH - (bulletHistory[i] / maxVal) * gH;
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-
-      // Remplissage sous la courbe
-      ctx.lineTo(gX + ((bulletHistory.length - 1) / (GRAPH_MAX_SAMPLES - 1)) * gW, gY + gH);
-      ctx.lineTo(gX, gY + gH);
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(255,100,50,0.15)';
-      ctx.fill();
-    }
 
     // Timer & meilleurs temps
     let kills = 0;
@@ -804,7 +754,6 @@
       updateEnemies();
       updateBullets();
       updateDrops();
-      updateBulletGraph();
     }
 
     function draw() {
@@ -867,7 +816,6 @@
       drawNotifications();
       drawHUD();
       if (!isMobile) drawCrosshair(mouse.x, mouse.y);
-      drawBulletGraph();
       drawJoysticks();
 
       if (player.hp <= 0) {
