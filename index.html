@@ -226,7 +226,7 @@
     // Drops
     const drops = [];
     const DROP_RADIUS = 10;
-    const DROP_TYPES  = ['speed', 'firerate', 'hp'];
+    const DROP_TYPES  = ['speed', 'firerate'];
     const DROP_COLORS = { speed: '#00ccff', firerate: '#ffaa00', hp: '#ff4488', clearbullets: '#ffffff', circlefire: '#ff9900' };
     const DROP_ICONS  = { speed: '⚡', firerate: '🔥', hp: '❤', clearbullets: '✨', circlefire: '🌀' };
     const DROP_LABELS = { speed: 'VITESSE', firerate: 'CADENCE', hp: 'VIE', clearbullets: 'PURGE !', circlefire: 'CERCLE DE FEU' };
@@ -273,8 +273,14 @@
         drops.push({ x, y, type: 'clearbullets', age: 0 });
         return;
       }
+      if (Math.random() < 0.05) { drops.push({ x, y, type: 'hp', age: 0 }); return; }
       if (Math.random() > 0.5) return;
-      const type = DROP_TYPES[Math.floor(Math.random() * DROP_TYPES.length)];
+      const available = DROP_TYPES.filter(t =>
+        !(t === 'speed'    && player.speed   >= 8) &&
+        !(t === 'firerate' && player.fireCD  <= 3)
+      );
+      if (available.length === 0) return;
+      const type = available[Math.floor(Math.random() * available.length)];
       drops.push({ x, y, type, age: 0 });
     }
 
