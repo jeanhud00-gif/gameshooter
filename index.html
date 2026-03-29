@@ -226,9 +226,10 @@
     const drops = [];
     const DROP_RADIUS = 10;
     const DROP_TYPES  = ['speed', 'firerate', 'hp'];
-    const DROP_COLORS = { speed: '#00ccff', firerate: '#ffaa00', hp: '#ff4488' };
-    const DROP_ICONS  = { speed: '⚡', firerate: '🔥', hp: '❤' };
-    const DROP_LABELS = { speed: 'VITESSE', firerate: 'CADENCE', hp: 'VIE' };
+    const DROP_COLORS = { speed: '#00ccff', firerate: '#ffaa00', hp: '#ff4488', clearbullets: '#ffffff' };
+    const DROP_ICONS  = { speed: '⚡', firerate: '🔥', hp: '❤', clearbullets: '✨' };
+    const DROP_LABELS = { speed: 'VITESSE', firerate: 'CADENCE', hp: 'VIE', clearbullets: 'PURGE !' };
+    let screenFlash = 0;
 
     const notifications = [];
 
@@ -257,6 +258,11 @@
     }
 
     function spawnDrop(x, y) {
+      // 0.5% de chance de drop clearbullets, indépendant du reste
+      if (Math.random() < 0.005) {
+        drops.push({ x, y, type: 'clearbullets', age: 0 });
+        return;
+      }
       if (Math.random() > 0.5) return;
       const type = DROP_TYPES[Math.floor(Math.random() * DROP_TYPES.length)];
       drops.push({ x, y, type, age: 0 });
@@ -270,8 +276,11 @@
       } else if (type === 'hp') {
         player.hp = Math.min(player.hp + 2, player.maxHp + 2);
         player.maxHp = Math.max(player.maxHp, player.hp);
+      } else if (type === 'clearbullets') {
+        enemyBullets.length = 0;
+        screenFlash = 18;
       }
-      notifications.push({ text: `+${DROP_LABELS[type]}`, color: DROP_COLORS[type], age: 0, x: player.x, y: player.y - 40 });
+      notifications.push({ text: `✨ ${DROP_LABELS[type]}`, color: DROP_COLORS[type], age: 0, x: player.x, y: player.y - 40 });
     }
 
     function updateDrops() {
@@ -752,6 +761,11 @@
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
       ctx.strokeRect(barX - 1, barY - 1, barW + 2, barH + 2);
 
+      if (screenFlash > 0) {
+        ctx.fillStyle = `rgba(255,255,255,${screenFlash / 18 * 0.45})`;
+        ctx.fillRect(0, 0, MAP_W, MAP_H);
+        screenFlash--;
+      }
       drawNotifications();
       drawHUD();
       if (!isMobile) drawCrosshair(mouse.x, mouse.y);
