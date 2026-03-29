@@ -88,6 +88,7 @@
       speed: BASE_SPEED,
       fireCD: BASE_FIRE_CD,
       fireCDTimer: 0,
+      circleFire: 0,
     };
 
     const keys  = {};
@@ -226,12 +227,65 @@
     const drops = [];
     const DROP_RADIUS = 10;
     const DROP_TYPES  = ['speed', 'firerate', 'hp'];
-    const DROP_COLORS = { speed: '#00ccff', firerate: '#ffaa00', hp: '#ff4488', clearbullets: '#ffffff' };
-    const DROP_ICONS  = { speed: '⚡', firerate: '🔥', hp: '❤', clearbullets: '✨' };
-    const DROP_LABELS = { speed: 'VITESSE', firerate: 'CADENCE', hp: 'VIE', clearbullets: 'PURGE !' };
+    const DROP_COLORS = { speed: '#00ccff', firerate: '#ffaa00', hp: '#ff4488', clearbullets: '#ffffff', circlefire: '#ff9900' };
+    const DROP_ICONS  = { speed: '⚡', firerate: '🔥', hp: '❤', clearbullets: '✨', circlefire: '🌀' };
+    const DROP_LABELS = { speed: 'VITESSE', firerate: 'CADENCE', hp: 'VIE', clearbullets: 'PURGE !', circlefire: 'CERCLE DE FEU' };
     let screenFlash = 0;
 
     const notifications = [];
+
+    // Graphique projectiles
+    const bulletHistory = [];
+    const GRAPH_MAX_SAMPLES = 180;
+    let graphSampleTick = 0;
+
+    function updateBulletGraph() {
+      graphSampleTick++;
+      if (graphSampleTick % 4 !== 0) return;
+      bulletHistory.push(enemyBullets.length);
+      if (bulletHistory.length > GRAPH_MAX_SAMPLES) bulletHistory.shift();
+    }
+
+    function drawBulletGraph() {
+      const gW = 180, gH = 70;
+      const gX = MAP_W - gW - 12;
+      const gY = MAP_H - gH - 12;
+      const maxVal = Math.max(20, ...bulletHistory);
+
+      // Fond
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.beginPath(); ctx.roundRect(gX - 8, gY - 18, gW + 16, gH + 26, 8); ctx.fill();
+
+      // Label
+      ctx.font = 'bold 10px monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.textAlign = 'left';
+      ctx.fillText(`PROJECTILES  ${enemyBullets.length}`, gX, gY - 6);
+
+      // Ligne de base
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(gX, gY + gH); ctx.lineTo(gX + gW, gY + gH); ctx.stroke();
+
+      // Courbe
+      if (bulletHistory.length < 2) return;
+      ctx.beginPath();
+      ctx.strokeStyle = '#ff6633';
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < bulletHistory.length; i++) {
+        const x = gX + (i / (GRAPH_MAX_SAMPLES - 1)) * gW;
+        const y = gY + gH - (bulletHistory[i] / maxVal) * gH;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      // Remplissage sous la courbe
+      ctx.lineTo(gX + ((bulletHistory.length - 1) / (GRAPH_MAX_SAMPLES - 1)) * gW, gY + gH);
+      ctx.lineTo(gX, gY + gH);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(255,100,50,0.15)';
+      ctx.fill();
+    }
 
     // Timer & meilleurs temps
     let kills = 0;
@@ -258,6 +312,10 @@
     }
 
     function spawnDrop(x, y) {
+      if (Math.random() < 0.02) {
+        drops.push({ x, y, type: 'circlefire', age: 0 });
+        return;
+      }
       // 0.5% de chance de drop clearbullets, indépendant du reste
       if (Math.random() < 0.005) {
         drops.push({ x, y, type: 'clearbullets', age: 0 });
@@ -279,6 +337,8 @@
       } else if (type === 'clearbullets') {
         enemyBullets.length = 0;
         screenFlash = 18;
+      } else if (type === 'circlefire') {
+        player.circleFire = 1800; // 30s à 60fps
       }
       notifications.push({ text: `✨ ${DROP_LABELS[type]}`, color: DROP_COLORS[type], age: 0, x: player.x, y: player.y - 40 });
     }
@@ -500,7 +560,17 @@
     }
 
     function updateBullets() {
-      if ((mouse.down || gpFire || touchFire) && player.hp > 0) {
+      if (player.circleFire > 0) {
+        player.circleFire--;
+        player.fireCDTimer++;
+        if (player.fireCDTimer >= player.fireCD && player.hp > 0) {
+          player.fireCDTimer = 0;
+          for (let k = 0; k < 8; k++) {
+            const a = (k / 8) * Math.PI * 2;
+            playerBullets.push({ x: player.x, y: player.y, vx: Math.cos(a) * 9, vy: Math.sin(a) * 9 });
+          }
+        }
+      } else if ((mouse.down || gpFire || touchFire) && player.hp > 0) {
         player.fireCDTimer++;
         if (player.fireCDTimer >= player.fireCD) {
           player.fireCDTimer = 0;
@@ -596,6 +666,20 @@
       ctx.textAlign = 'center';
       hudText(timerText, MAP_W / 2, pad + timerFont - 2, 'white');
       ctx.textAlign = 'left';
+
+      // Barre durée cercle de feu
+      if (player.circleFire > 0) {
+        const bW = Math.round(140 * s), bH = Math.round(10 * s);
+        const bX = pad, bY = pad + barH + lh * 5 + Math.round(6 * s);
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.beginPath(); ctx.roundRect(bX - 6, bY - 14, bW + 12, bH + 20, 6); ctx.fill();
+        ctx.font = `bold ${Math.round(10 * s)}px monospace`;
+        hudText('🌀 CERCLE DE FEU', bX, bY - 2, '#ff9900');
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(bX, bY + 2, bW, bH);
+        ctx.fillStyle = '#ff9900';
+        ctx.fillRect(bX, bY + 2, bW * (player.circleFire / 1800), bH);
+      }
     }
 
     function drawCrosshair(x, y) {
@@ -718,6 +802,7 @@
       updateEnemies();
       updateBullets();
       updateDrops();
+      updateBulletGraph();
     }
 
     function draw() {
@@ -751,6 +836,17 @@
         }
         drawEnemyFace(e.x, e.y, e.angle);
       }
+      if (player.circleFire > 0) {
+        ctx.save();
+        ctx.strokeStyle = '#ff9900';
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.4 + 0.3 * Math.sin(Date.now() / 120);
+        ctx.beginPath(); ctx.arc(player.x, player.y, RADIUS + 10, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 0.15;
+        ctx.fillStyle = '#ff9900';
+        ctx.fill();
+        ctx.restore();
+      }
       drawHead(player.x, player.y, player.angle);
 
       const barW = 44, barH = 6, barX = player.x - barW / 2, barY = player.y - RADIUS - 14;
@@ -769,6 +865,7 @@
       drawNotifications();
       drawHUD();
       if (!isMobile) drawCrosshair(mouse.x, mouse.y);
+      drawBulletGraph();
       drawJoysticks();
 
       if (player.hp <= 0) {
