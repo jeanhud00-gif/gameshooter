@@ -27,30 +27,30 @@
     const ctx = canvas.getContext('2d');
 
     function getMapSize() {
-      return Math.min(window.innerWidth, window.innerHeight);
+      return { w: window.innerWidth, h: window.innerHeight };
     }
 
-    let MAP_SIZE = getMapSize();
-    canvas.width  = MAP_SIZE;
-    canvas.height = MAP_SIZE;
+    let { w: MAP_W, h: MAP_H } = getMapSize();
+    canvas.width  = MAP_W;
+    canvas.height = MAP_H;
 
     // Grass offscreen
     const grassCanvas = document.createElement('canvas');
     const gCtx = grassCanvas.getContext('2d');
     function buildGrass() {
-      grassCanvas.width  = MAP_SIZE;
-      grassCanvas.height = MAP_SIZE;
+      grassCanvas.width  = MAP_W;
+      grassCanvas.height = MAP_H;
       gCtx.fillStyle = '#4a7c3f';
-      gCtx.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
+      gCtx.fillRect(0, 0, MAP_W, MAP_H);
       for (let i = 0; i < 800; i++) {
-        const x = Math.random() * MAP_SIZE;
-        const y = Math.random() * MAP_SIZE;
+        const x = Math.random() * MAP_W;
+        const y = Math.random() * MAP_H;
         gCtx.fillStyle = Math.random() > 0.5 ? '#3d6b34' : '#56a046';
         gCtx.fillRect(x, y, 3, 3);
       }
       gCtx.strokeStyle = '#2d4f25';
       gCtx.lineWidth = 4;
-      gCtx.strokeRect(2, 2, MAP_SIZE - 4, MAP_SIZE - 4);
+      gCtx.strokeRect(2, 2, MAP_W - 4, MAP_H - 4);
     }
     buildGrass();
 
@@ -63,7 +63,7 @@
     const ENEMY_RADIUS = 18;
 
     const player = {
-      x: MAP_SIZE / 2, y: MAP_SIZE / 2, angle: 0,
+      x: MAP_W / 2, y: MAP_H / 2, angle: 0,
       hp: BASE_MAX_HP, maxHp: BASE_MAX_HP,
       speed: BASE_SPEED,
       fireCD: BASE_FIRE_CD,
@@ -71,11 +71,20 @@
     };
 
     const keys  = {};
-    const mouse = { x: MAP_SIZE / 2, y: MAP_SIZE / 2, down: false };
+    const mouse = { x: MAP_W / 2, y: MAP_H / 2, down: false };
 
     document.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
     document.addEventListener('keyup',   e => keys[e.key.toLowerCase()] = false);
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouse.down = false; });
+
+    // Gamepad
+    function getGamepad() {
+      const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      for (const pad of pads) if (pad) return pad;
+      return null;
+    }
+    let gpPrevStart = false;
+    let gpFire = false;
 
     canvas.addEventListener('mousedown', () => mouse.down = true);
     canvas.addEventListener('mouseup',   () => mouse.down = false);
@@ -91,12 +100,12 @@
 
     // Resize : adapte le canvas à la nouvelle taille de fenêtre
     window.addEventListener('resize', () => {
-      MAP_SIZE = getMapSize();
-      canvas.width  = MAP_SIZE;
-      canvas.height = MAP_SIZE;
+      ({ w: MAP_W, h: MAP_H } = getMapSize());
+      canvas.width  = MAP_W;
+      canvas.height = MAP_H;
       buildGrass();
-      player.x = Math.max(RADIUS, Math.min(MAP_SIZE - RADIUS, player.x));
-      player.y = Math.max(RADIUS, Math.min(MAP_SIZE - RADIUS, player.y));
+      player.x = Math.max(RADIUS, Math.min(MAP_W - RADIUS, player.x));
+      player.y = Math.max(RADIUS, Math.min(MAP_H - RADIUS, player.y));
     });
 
     // Bullets
@@ -233,10 +242,10 @@
     function spawnEnemy() {
       let x, y;
       const side = Math.floor(Math.random() * 4);
-      if (side === 0)      { x = Math.random() * MAP_SIZE; y = 0; }
-      else if (side === 1) { x = MAP_SIZE; y = Math.random() * MAP_SIZE; }
-      else if (side === 2) { x = Math.random() * MAP_SIZE; y = MAP_SIZE; }
-      else                 { x = 0; y = Math.random() * MAP_SIZE; }
+      if (side === 0)      { x = Math.random() * MAP_W; y = 0; }
+      else if (side === 1) { x = MAP_W; y = Math.random() * MAP_H; }
+      else if (side === 2) { x = Math.random() * MAP_W; y = MAP_H; }
+      else                 { x = 0; y = Math.random() * MAP_H; }
       const patterns = ['single', 'spread', 'circle', 'burst', 'double'];
       const pattern = patterns[Math.floor(Math.random() * patterns.length)];
       enemies.push({ x, y, hp: diff.enemyHp, shootTimer: Math.floor(Math.random() * 90), angle: 0, pattern, burstCount: 0, burstTimer: 0 });
@@ -346,7 +355,7 @@
     }
 
     function updateBullets() {
-      if (mouse.down && player.hp > 0) {
+      if ((mouse.down || gpFire) && player.hp > 0) {
         player.fireCDTimer++;
         if (player.fireCDTimer >= player.fireCD) {
           player.fireCDTimer = 0;
@@ -358,12 +367,12 @@
       for (let i = playerBullets.length - 1; i >= 0; i--) {
         const b = playerBullets[i];
         b.x += b.vx; b.y += b.vy;
-        if (b.x < 0 || b.x > MAP_SIZE || b.y < 0 || b.y > MAP_SIZE) playerBullets.splice(i, 1);
+        if (b.x < 0 || b.x > MAP_W || b.y < 0 || b.y > MAP_H) playerBullets.splice(i, 1);
       }
       for (let i = enemyBullets.length - 1; i >= 0; i--) {
         const b = enemyBullets[i];
         b.x += b.vx; b.y += b.vy;
-        if (b.x < 0 || b.x > MAP_SIZE || b.y < 0 || b.y > MAP_SIZE) { enemyBullets.splice(i, 1); continue; }
+        if (b.x < 0 || b.x > MAP_W || b.y < 0 || b.y > MAP_H) { enemyBullets.splice(i, 1); continue; }
         if (dist(b, player) < RADIUS) {
           enemyBullets.splice(i, 1);
           player.hp = Math.max(0, player.hp - 1);
@@ -405,7 +414,7 @@
       ctx.fillStyle = 'white';
       ctx.font = 'bold 20px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(formatTime(finalTime), MAP_SIZE / 2, 28);
+      ctx.fillText(formatTime(finalTime), MAP_W / 2, 28);
       ctx.textAlign = 'left';
     }
 
@@ -477,9 +486,38 @@
       if (keys['s']) dy += 1;
       if (keys['q']) dx -= 1;
       if (keys['d']) dx += 1;
-      if (dx !== 0 && dy !== 0) { dx *= Math.SQRT1_2; dy *= Math.SQRT1_2; }
-      player.x = Math.max(RADIUS, Math.min(MAP_SIZE - RADIUS, player.x + dx * player.speed));
-      player.y = Math.max(RADIUS, Math.min(MAP_SIZE - RADIUS, player.y + dy * player.speed));
+
+      // Gamepad input
+      gpFire = false;
+      const gp = getGamepad();
+      if (gp) {
+        // Stick gauche → déplacement
+        const lx = Math.abs(gp.axes[0]) > 0.15 ? gp.axes[0] : 0;
+        const ly = Math.abs(gp.axes[1]) > 0.15 ? gp.axes[1] : 0;
+        dx += lx; dy += ly;
+
+        // Stick droit → visée
+        const rx = Math.abs(gp.axes[2]) > 0.15 ? gp.axes[2] : 0;
+        const ry = Math.abs(gp.axes[3]) > 0.15 ? gp.axes[3] : 0;
+        if (rx !== 0 || ry !== 0) {
+          player.angle = Math.atan2(ry, rx);
+          mouse.x = player.x + rx * 200;
+          mouse.y = player.y + ry * 200;
+        }
+
+        // Gâchette droite (7), RB (5) ou A/X (0) → tir
+        gpFire = gp.buttons[7]?.pressed || gp.buttons[5]?.pressed || gp.buttons[0]?.pressed;
+
+        // Start (9) → redémarrer
+        const startPressed = gp.buttons[9]?.pressed;
+        if (startPressed && !gpPrevStart && player.hp <= 0) restartGame();
+        gpPrevStart = startPressed;
+      }
+
+      const len = Math.hypot(dx, dy);
+      if (len > 1) { dx /= len; dy /= len; }
+      player.x = Math.max(RADIUS, Math.min(MAP_W - RADIUS, player.x + dx * player.speed));
+      player.y = Math.max(RADIUS, Math.min(MAP_H - RADIUS, player.y + dy * player.speed));
 
       spawnTimer++;
       if (spawnTimer >= diff.spawnInterval) { spawnTimer = 0; spawnEnemy(); }
@@ -510,48 +548,51 @@
 
       if (player.hp <= 0) {
         ctx.fillStyle = 'rgba(0,0,0,0.65)';
-        ctx.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
+        ctx.fillRect(0, 0, MAP_W, MAP_H);
 
-        const cx = MAP_SIZE / 2;
+        const cx = MAP_W / 2;
+        const cy = MAP_H / 2;
         ctx.textAlign = 'center';
 
         ctx.fillStyle = 'red';
         ctx.font = 'bold 48px monospace';
-        ctx.fillText('GAME OVER', cx, MAP_SIZE / 2 - 60);
+        ctx.fillText('GAME OVER', cx, cy - 60);
 
         ctx.fillStyle = 'white';
         ctx.font = 'bold 22px monospace';
-        ctx.fillText(`Temps : ${formatTime(finalTime)}`, cx, MAP_SIZE / 2 - 10);
+        ctx.fillText(`Temps : ${formatTime(finalTime)}`, cx, cy - 10);
 
         // Top 3
         const best = loadBestTimes();
         const medals = ['🥇', '🥈', '🥉'];
         ctx.font = 'bold 15px monospace';
         ctx.fillStyle = '#ffdd88';
-        ctx.fillText('— MEILLEURS TEMPS —', cx, MAP_SIZE / 2 + 30);
+        ctx.fillText('— MEILLEURS TEMPS —', cx, cy + 30);
         best.forEach((t, i) => {
           ctx.fillStyle = i === 0 ? '#ffd700' : i === 1 ? '#c0c0c0' : '#cd7f32';
-          ctx.fillText(`${medals[i]}  ${formatTime(t)}`, cx, MAP_SIZE / 2 + 55 + i * 24);
+          ctx.fillText(`${medals[i]}  ${formatTime(t)}`, cx, cy + 55 + i * 24);
         });
 
         ctx.fillStyle = 'rgba(255,255,255,0.6)';
         ctx.font = '15px monospace';
-        ctx.fillText('Appuie sur R pour recommencer', cx, MAP_SIZE / 2 + 140);
+        ctx.fillText('R  ou  Start (manette)  pour recommencer', cx, cy + 140);
         ctx.textAlign = 'left';
       }
     }
 
+function restartGame() {
+      player.hp = BASE_MAX_HP; player.maxHp = BASE_MAX_HP;
+      player.speed = BASE_SPEED; player.fireCD = BASE_FIRE_CD;
+      player.fireCDTimer = 0;
+      player.x = MAP_W / 2; player.y = MAP_H / 2;
+      enemies.length = 0; playerBullets.length = 0;
+      enemyBullets.length = 0; drops.length = 0;
+      notifications.length = 0; spawnTimer = 0;
+      gameStartTime = Date.now(); finalTime = 0; scoreSaved = false; kills = 0;
+    }
+
     document.addEventListener('keydown', e => {
-      if (e.key.toLowerCase() === 'r' && player.hp <= 0) {
-        player.hp = BASE_MAX_HP; player.maxHp = BASE_MAX_HP;
-        player.speed = BASE_SPEED; player.fireCD = BASE_FIRE_CD;
-        player.fireCDTimer = 0;
-        player.x = MAP_SIZE / 2; player.y = MAP_SIZE / 2;
-        enemies.length = 0; playerBullets.length = 0;
-        enemyBullets.length = 0; drops.length = 0;
-        notifications.length = 0; spawnTimer = 0;
-        gameStartTime = Date.now(); finalTime = 0; scoreSaved = false; kills = 0;
-      }
+      if (e.key.toLowerCase() === 'r' && player.hp <= 0) restartGame();
     });
 
     function loop() {
