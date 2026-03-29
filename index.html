@@ -321,8 +321,8 @@
         spawnInterval: Math.max(55,  Math.round(160 - t * 0.35)),
         enemySpeed:    Math.min(2.4, 1.2  + t * 0.004),
         enemyHp:       Math.max(1,   Math.floor(3 + t * 0.013)),
-        bulletFast:    Math.min(5.0, 3.2  + t * 0.006),
-        bulletSlow:    Math.min(4.5, 2.8  + t * 0.0057),
+        bulletFast:    Math.min(4.2, 2.8  + t * 0.004),
+        bulletSlow:    Math.min(3.8, 2.4  + t * 0.004),
         shootCD:       Math.max(45,  Math.round(90 - t * 0.15)),
         niveau:        Math.min(10,  Math.floor(1 + t / 30)),
       };
@@ -341,9 +341,9 @@
       else if (side === 1) { x = MAP_W; y = Math.random() * MAP_H; }
       else if (side === 2) { x = Math.random() * MAP_W; y = MAP_H; }
       else                 { x = 0; y = Math.random() * MAP_H; }
-      const patterns = ['single', 'spread', 'circle', 'burst', 'double'];
+      const patterns = ['single', 'spread', 'circle', 'burst', 'double', 'spiral', 'shotgun', 'cross', 'sniper'];
       const pattern = patterns[Math.floor(Math.random() * patterns.length)];
-      enemies.push({ x, y, hp: diff.enemyHp, shootTimer: Math.floor(Math.random() * 90), angle: 0, pattern, burstCount: 0, burstTimer: 0 });
+      enemies.push({ x, y, hp: diff.enemyHp, shootTimer: Math.floor(Math.random() * 90), angle: 0, pattern, burstCount: 0, burstTimer: 0, rotAngle: Math.random() * Math.PI * 2 });
     }
 
     function drawEnemyFace(x, y, angle) {
@@ -406,7 +406,12 @@
         }
 
         e.shootTimer++;
-        const shootCD = e.pattern === 'circle' ? diff.shootCD + 30 : e.pattern === 'burst' ? diff.shootCD + 10 : diff.shootCD;
+        const shootCD = e.pattern === 'circle'  ? diff.shootCD + 30
+                      : e.pattern === 'burst'   ? diff.shootCD + 10
+                      : e.pattern === 'sniper'  ? diff.shootCD + 70
+                      : e.pattern === 'spiral'  ? Math.max(18, diff.shootCD - 25)
+                      : e.pattern === 'shotgun' ? diff.shootCD + 20
+                      : diff.shootCD;
         if (e.shootTimer >= shootCD) {
           e.shootTimer = 0;
           const a = angle;
@@ -430,6 +435,26 @@
             const px = -Math.sin(a) * 8, py = Math.cos(a) * 8;
             enemyBullets.push({ x: e.x + px, y: e.y + py, vx: Math.cos(a) * diff.bulletSlow, vy: Math.sin(a) * diff.bulletSlow });
             enemyBullets.push({ x: e.x - px, y: e.y - py, vx: Math.cos(a) * diff.bulletSlow, vy: Math.sin(a) * diff.bulletSlow });
+          } else if (e.pattern === 'spiral') {
+            // Bullet rotative : chaque tir tourne de ~27°, crée une spirale
+            e.rotAngle += 0.47;
+            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(e.rotAngle) * diff.bulletSlow, vy: Math.sin(e.rotAngle) * diff.bulletSlow });
+          } else if (e.pattern === 'shotgun') {
+            // Large cône de 9 bullets → dévastateur à courte portée
+            for (let s = -4; s <= 4; s++) {
+              const sa = a + s * 0.18;
+              enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(sa) * diff.bulletSlow, vy: Math.sin(sa) * diff.bulletSlow });
+            }
+          } else if (e.pattern === 'cross') {
+            // 4 bullets : vise le joueur + 3 autres directions (90°, 180°, 270°)
+            for (let k = 0; k < 4; k++) {
+              const ca = a + k * (Math.PI / 2);
+              enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(ca) * diff.bulletSlow, vy: Math.sin(ca) * diff.bulletSlow });
+            }
+          } else if (e.pattern === 'sniper') {
+            // Long CD mais bullet ultra-rapide — difficile à esquiver
+            const speed = Math.min(7.5, diff.bulletFast * 1.6);
+            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed });
           }
         }
 
