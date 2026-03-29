@@ -274,8 +274,8 @@
       } else if (type === 'firerate') {
         player.fireCD = Math.max(player.fireCD - 3, 3);
       } else if (type === 'hp') {
-        player.hp = Math.min(player.hp + 2, player.maxHp + 2);
-        player.maxHp = Math.max(player.maxHp, player.hp);
+        player.hp = Math.min(player.hp + 2, Math.min(player.maxHp + 2, 15));
+        player.maxHp = Math.min(Math.max(player.maxHp, player.hp), 15);
       } else if (type === 'clearbullets') {
         enemyBullets.length = 0;
         screenFlash = 18;
