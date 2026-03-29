@@ -2,6 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
   <title>Shooter 2D</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -17,6 +18,9 @@
     canvas {
       display: block;
       cursor: none;
+      touch-action: none;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
     }
   </style>
 </head>
@@ -85,6 +89,81 @@
     }
     let gpPrevStart = false;
     let gpFire = false;
+
+    // Joysticks tactiles
+    const JOY_RADIUS = 70;
+    const JOY_KNOB   = 28;
+    const joyL = { active: false, id: -1, baseX: 0, baseY: 0, dx: 0, dy: 0 };
+    const joyR = { active: false, id: -1, baseX: 0, baseY: 0, dx: 0, dy: 0 };
+    let touchFire = false;
+
+    function canvasCoords(touch) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (touch.clientX - rect.left) * (canvas.width  / rect.width),
+        y: (touch.clientY - rect.top)  * (canvas.height / rect.height)
+      };
+    }
+
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      if (player.hp <= 0) { restartGame(); return; }
+      for (const t of e.changedTouches) {
+        const { x, y } = canvasCoords(t);
+        if (x < MAP_W / 2) {
+          if (!joyL.active) { joyL.active = true; joyL.id = t.identifier; joyL.baseX = x; joyL.baseY = y; joyL.dx = 0; joyL.dy = 0; }
+        } else {
+          if (!joyR.active) { joyR.active = true; joyR.id = t.identifier; joyR.baseX = x; joyR.baseY = y; joyR.dx = 0; joyR.dy = 0; }
+        }
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        const { x, y } = canvasCoords(t);
+        for (const joy of [joyL, joyR]) {
+          if (joy.id !== t.identifier) continue;
+          const ddx = x - joy.baseX, ddy = y - joy.baseY;
+          const len = Math.hypot(ddx, ddy) || 1;
+          const clamped = Math.min(len, JOY_RADIUS);
+          joy.dx = (ddx / len) * (clamped / JOY_RADIUS);
+          joy.dy = (ddy / len) * (clamped / JOY_RADIUS);
+        }
+      }
+    }, { passive: false });
+
+    function onTouchEnd(e) {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        for (const joy of [joyL, joyR]) {
+          if (joy.id === t.identifier) { joy.active = false; joy.id = -1; joy.dx = 0; joy.dy = 0; }
+        }
+      }
+    }
+    canvas.addEventListener('touchend',    onTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
+
+    function drawJoysticks() {
+      for (const joy of [joyL, joyR]) {
+        if (!joy.active) continue;
+        ctx.save();
+        // Anneau de base
+        ctx.globalAlpha = 0.25;
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(joy.baseX, joy.baseY, JOY_RADIUS, 0, Math.PI * 2);
+        ctx.stroke();
+        // Knob
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(joy.baseX + joy.dx * JOY_RADIUS, joy.baseY + joy.dy * JOY_RADIUS, JOY_KNOB, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
 
     canvas.addEventListener('mousedown', () => mouse.down = true);
     canvas.addEventListener('mouseup',   () => mouse.down = false);
@@ -355,7 +434,7 @@
     }
 
     function updateBullets() {
-      if ((mouse.down || gpFire) && player.hp > 0) {
+      if ((mouse.down || gpFire || touchFire) && player.hp > 0) {
         player.fireCDTimer++;
         if (player.fireCDTimer >= player.fireCD) {
           player.fireCDTimer = 0;
@@ -487,6 +566,16 @@
       if (keys['q']) dx -= 1;
       if (keys['d']) dx += 1;
 
+      // Joysticks tactiles
+      touchFire = false;
+      if (joyL.active) { dx += joyL.dx; dy += joyL.dy; }
+      if (joyR.active) {
+        player.angle = Math.atan2(joyR.dy, joyR.dx);
+        mouse.x = player.x + joyR.dx * 200;
+        mouse.y = player.y + joyR.dy * 200;
+        touchFire = true;
+      }
+
       // Gamepad input
       gpFire = false;
       const gp = getGamepad();
@@ -545,6 +634,7 @@
       drawNotifications();
       drawHUD();
       drawCrosshair(mouse.x, mouse.y);
+      drawJoysticks();
 
       if (player.hp <= 0) {
         ctx.fillStyle = 'rgba(0,0,0,0.65)';
@@ -575,7 +665,7 @@
 
         ctx.fillStyle = 'rgba(255,255,255,0.6)';
         ctx.font = '15px monospace';
-        ctx.fillText('R  ou  Start (manette)  pour recommencer', cx, cy + 140);
+        ctx.fillText('R · Start (manette) · Tap (mobile)', cx, cy + 140);
         ctx.textAlign = 'left';
       }
     }
