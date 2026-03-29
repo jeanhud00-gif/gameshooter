@@ -333,12 +333,12 @@
     function updateDifficulty() {
       const t = finalTime / 1000; // secondes écoulées
       diff = {
-        spawnInterval: Math.max(55,  Math.round(200 - t * 0.40)),
+        spawnInterval: Math.max(55,  Math.round(160 - t * 0.35 - Math.max(0, (t - 150) * 0.12))),
         enemySpeed:    1.4,
         enemyHp:       2,
         bulletFast:    3.2,
         bulletSlow:    2.5,
-        shootCD:       90,
+        shootCD:       110,
         niveau:        Math.min(10,  Math.floor(1 + t / 30)),
       };
     }
@@ -427,6 +427,7 @@
                       : e.pattern === 'spiral'  ? Math.max(18, diff.shootCD - 25)
                       : e.pattern === 'shotgun' ? diff.shootCD + 20
                       : diff.shootCD;
+        e.charging = e.pattern === 'sniper' && e.shootTimer >= shootCD - 45;
         if (e.shootTimer >= shootCD) {
           e.shootTimer = 0;
           const a = angle;
@@ -468,7 +469,7 @@
             }
           } else if (e.pattern === 'sniper') {
             // Long CD mais bullet ultra-rapide — difficile à esquiver
-            const speed = Math.min(5.5, diff.bulletFast * 1.5);
+            const speed = Math.min(4.5, diff.bulletFast * 1.25);
             enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed });
           }
         }
@@ -728,7 +729,19 @@
       ctx.drawImage(grassCanvas, 0, 0);
       drawDrops();
       drawBullets();
-      for (const e of enemies) drawEnemyFace(e.x, e.y, e.angle);
+      for (const e of enemies) {
+        if (e.charging) {
+          ctx.save();
+          ctx.strokeStyle = '#ff4400';
+          ctx.lineWidth = 2;
+          ctx.globalAlpha = 0.4 + 0.4 * Math.sin(Date.now() / 80);
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, ENEMY_RADIUS + 10, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+        drawEnemyFace(e.x, e.y, e.angle);
+      }
       drawHead(player.x, player.y, player.angle);
 
       const barW = 44, barH = 6, barX = player.x - barW / 2, barY = player.y - RADIUS - 14;
