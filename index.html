@@ -333,12 +333,12 @@
     function updateDifficulty() {
       const t = finalTime / 1000; // secondes écoulées
       diff = {
-        spawnInterval: Math.max(55,  Math.round(160 - t * 0.35)),
+        spawnInterval: Math.max(75,  Math.round(200 - t * 0.30)),
         enemySpeed:    Math.min(2.4, 1.2  + t * 0.004),
         enemyHp:       Math.max(1,   Math.floor(3 + t * 0.013)),
         bulletFast:    Math.min(3.2, 2.3  + t * 0.002),
         bulletSlow:    Math.min(2.8, 2.0  + t * 0.002),
-        shootCD:       Math.max(45,  Math.round(90 - t * 0.15)),
+        shootCD:       Math.max(60,  Math.round(110 - t * 0.12)),
         niveau:        Math.min(10,  Math.floor(1 + t / 30)),
       };
     }
@@ -438,7 +438,7 @@
               enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(sa) * diff.bulletSlow, vy: Math.sin(sa) * diff.bulletSlow });
             }
           } else if (e.pattern === 'circle') {
-            for (let k = 0; k < 8; k++) {
+            for (let k = 0; k < 6; k++) {
               const ca = (k / 8) * Math.PI * 2;
               enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(ca) * diff.bulletSlow, vy: Math.sin(ca) * diff.bulletSlow });
             }
@@ -456,7 +456,7 @@
             enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(e.rotAngle) * diff.bulletSlow, vy: Math.sin(e.rotAngle) * diff.bulletSlow });
           } else if (e.pattern === 'shotgun') {
             // Large cône de 9 bullets → dévastateur à courte portée
-            for (let s = -4; s <= 4; s++) {
+            for (let s = -3; s <= 3; s++) {
               const sa = a + s * 0.18;
               enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(sa) * diff.bulletSlow, vy: Math.sin(sa) * diff.bulletSlow });
             }
