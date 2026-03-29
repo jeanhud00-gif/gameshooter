@@ -37,6 +37,7 @@
     let { w: MAP_W, h: MAP_H } = getMapSize();
     canvas.width  = MAP_W;
     canvas.height = MAP_H;
+    const isMobile = navigator.maxTouchPoints > 0;
 
     // Grass offscreen
     const grassCanvas = document.createElement('canvas');
@@ -145,22 +146,37 @@
     canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
 
     function drawJoysticks() {
+      if (!isMobile) return;
+      const ghostY = MAP_H * 0.78;
+
+      // Zones fantômes (toujours visibles, très discrètes)
+      const ghosts = [
+        { x: MAP_W * 0.18, joy: joyL, icon: '✜' },
+        { x: MAP_W * 0.82, joy: joyR, icon: '◎' },
+      ];
+      for (const { x, joy, icon } of ghosts) {
+        if (joy.active) continue;
+        ctx.save();
+        ctx.globalAlpha = 0.12;
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(x, ghostY, JOY_RADIUS, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 0.08;
+        ctx.fillStyle = 'white';
+        ctx.beginPath(); ctx.arc(x, ghostY, JOY_KNOB, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+
+      // Joysticks actifs
       for (const joy of [joyL, joyR]) {
         if (!joy.active) continue;
         ctx.save();
-        // Anneau de base
-        ctx.globalAlpha = 0.25;
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(joy.baseX, joy.baseY, JOY_RADIUS, 0, Math.PI * 2);
-        ctx.stroke();
-        // Knob
-        ctx.globalAlpha = 0.45;
+        ctx.globalAlpha = 0.22;
+        ctx.strokeStyle = 'white'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(joy.baseX, joy.baseY, JOY_RADIUS, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 0.42;
         ctx.fillStyle = 'white';
-        ctx.beginPath();
-        ctx.arc(joy.baseX + joy.dx * JOY_RADIUS, joy.baseY + joy.dy * JOY_RADIUS, JOY_KNOB, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.beginPath(); ctx.arc(joy.baseX + joy.dx * JOY_RADIUS, joy.baseY + joy.dy * JOY_RADIUS, JOY_KNOB, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
       }
     }
@@ -472,28 +488,39 @@
     }
 
     function drawHUD() {
-      const maxBarW = 100;
+      const s       = isMobile ? Math.min(MAP_W, MAP_H) / 320 : 1;
+      const fs      = Math.round(13 * s);
+      const pad     = Math.round(12 * s);
+      const barW    = Math.round(130 * s);
+      const barH    = Math.round(14 * s);
+
+      // Barre HP
       ctx.fillStyle = '#000';
-      ctx.fillRect(10, 10, maxBarW + 4, 16);
+      ctx.fillRect(pad, pad, barW + 4, barH + 4);
       ctx.fillStyle = player.hp > player.maxHp * 0.4 ? '#22cc22' : player.hp > player.maxHp * 0.2 ? '#ffaa00' : '#cc2222';
-      ctx.fillRect(12, 12, maxBarW * (player.hp / player.maxHp), 12);
+      ctx.fillRect(pad + 2, pad + 2, barW * (player.hp / player.maxHp), barH);
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
-      ctx.strokeRect(10, 10, maxBarW + 4, 16);
-      ctx.fillStyle = 'white'; ctx.font = '12px monospace';
-      ctx.fillText('HP', maxBarW + 16, 23);
-      ctx.fillStyle = '#00ccff'; ctx.fillText(`SPD ${player.speed.toFixed(1)}`, 10, 44);
-      ctx.fillStyle = '#ffaa00'; ctx.fillText(`TIR  ${(60 / player.fireCD).toFixed(1)}/s`, 10, 60);
-      ctx.fillStyle = 'white';  ctx.fillText(`Ennemis : ${enemies.length}`, 10, 76);
-      ctx.fillStyle = '#ff6666'; ctx.fillText(`Tués   : ${kills}`, 10, 92);
+      ctx.strokeRect(pad, pad, barW + 4, barH + 4);
+      ctx.fillStyle = 'white'; ctx.font = `bold ${fs}px monospace`;
+      ctx.fillText('HP', pad + barW + 8, pad + barH);
+
+      // Stats
+      const lh = Math.round(18 * s);
+      const y0 = pad + barH + lh + 4;
+      ctx.font = `${fs}px monospace`;
+      ctx.fillStyle = '#00ccff'; ctx.fillText(`SPD ${player.speed.toFixed(1)}`,        pad, y0);
+      ctx.fillStyle = '#ffaa00'; ctx.fillText(`TIR ${(60/player.fireCD).toFixed(1)}/s`, pad, y0 + lh);
+      ctx.fillStyle = 'white';   ctx.fillText(`Ennemis : ${enemies.length}`,            pad, y0 + lh * 2);
+      ctx.fillStyle = '#ff6666'; ctx.fillText(`Tués : ${kills}`,                        pad, y0 + lh * 3);
       const niv = diff.niveau || 1;
       const nivColor = niv <= 3 ? '#88ff88' : niv <= 6 ? '#ffaa00' : '#ff4444';
-      ctx.fillStyle = nivColor; ctx.fillText(`Niveau : ${niv}`, 10, 108);
+      ctx.fillStyle = nivColor;  ctx.fillText(`Niv. ${niv}`,                            pad, y0 + lh * 4);
 
-      // Timer (centré en haut)
+      // Timer centré en haut
       ctx.fillStyle = 'white';
-      ctx.font = 'bold 20px monospace';
+      ctx.font = `bold ${Math.round(22 * s)}px monospace`;
       ctx.textAlign = 'center';
-      ctx.fillText(formatTime(finalTime), MAP_W / 2, 28);
+      ctx.fillText(formatTime(finalTime), MAP_W / 2, pad + Math.round(18 * s));
       ctx.textAlign = 'left';
     }
 
@@ -550,6 +577,7 @@
     }
 
     function update() {
+      if (isMobile && MAP_W < MAP_H) return;
       if (player.hp <= 0) {
         if (!scoreSaved) {
           saveBestTime(finalTime);
@@ -617,6 +645,20 @@
     }
 
     function draw() {
+      // Portrait sur mobile → message de rotation
+      if (isMobile && MAP_W < MAP_H) {
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 0, MAP_W, MAP_H);
+        ctx.textAlign = 'center';
+        ctx.font = `${Math.round(MAP_W * 0.18)}px monospace`;
+        ctx.fillStyle = 'white';
+        ctx.fillText('↻', MAP_W / 2, MAP_H / 2 - MAP_W * 0.06);
+        ctx.font = `bold ${Math.round(MAP_W * 0.055)}px monospace`;
+        ctx.fillText('Tourne ton téléphone', MAP_W / 2, MAP_H / 2 + MAP_W * 0.04);
+        ctx.fillText('en mode paysage', MAP_W / 2, MAP_H / 2 + MAP_W * 0.11);
+        ctx.textAlign = 'left';
+        return;
+      }
       ctx.drawImage(grassCanvas, 0, 0);
       drawDrops();
       drawBullets();
@@ -633,7 +675,7 @@
 
       drawNotifications();
       drawHUD();
-      drawCrosshair(mouse.x, mouse.y);
+      if (!isMobile) drawCrosshair(mouse.x, mouse.y);
       drawJoysticks();
 
       if (player.hp <= 0) {
