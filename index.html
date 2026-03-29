@@ -703,7 +703,7 @@
       player.y = Math.max(RADIUS, Math.min(MAP_H - RADIUS, player.y + dy * player.speed));
 
       spawnTimer++;
-      if (spawnTimer >= diff.spawnInterval) { spawnTimer = 0; spawnEnemy(); }
+      if (spawnTimer >= diff.spawnInterval) { spawnTimer = 0; if (enemies.length < 12) spawnEnemy(); }
 
       updateEnemies();
       updateBullets();
