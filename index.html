@@ -333,12 +333,12 @@
     function updateDifficulty() {
       const t = finalTime / 1000; // secondes écoulées
       diff = {
-        spawnInterval: Math.max(75,  Math.round(200 - t * 0.30)),
-        enemySpeed:    Math.min(2.4, 1.2  + t * 0.004),
-        enemyHp:       Math.max(1,   Math.floor(3 + t * 0.013)),
-        bulletFast:    Math.min(3.2, 2.3  + t * 0.002),
-        bulletSlow:    Math.min(2.8, 2.0  + t * 0.002),
-        shootCD:       Math.max(60,  Math.round(110 - t * 0.12)),
+        spawnInterval: Math.max(55,  Math.round(200 - t * 0.30)),
+        enemySpeed:    1.4,
+        enemyHp:       2,
+        bulletFast:    3.2,
+        bulletSlow:    2.5,
+        shootCD:       90,
         niveau:        Math.min(10,  Math.floor(1 + t / 30)),
       };
     }
