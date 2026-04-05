@@ -737,7 +737,7 @@
           player.fireCDTimer = 0;
           for (let k = 0; k < 8; k++) {
             const a = (k / 8) * Math.PI * 2;
-            playerBullets.push({ x: player.x, y: player.y, vx: Math.cos(a) * 9, vy: Math.sin(a) * 9 });
+            playerBullets.push({ x: player.x, y: player.y, vx: Math.cos(a) * 14, vy: Math.sin(a) * 14 });
           }
         }
       } else if ((mouse.down || gpFire || touchFire) && player.hp > 0) {
@@ -745,7 +745,7 @@
         if (player.fireCDTimer >= player.fireCD) {
           player.fireCDTimer = 0;
           const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
-          playerBullets.push({ x: player.x, y: player.y, vx: Math.cos(angle) * 9, vy: Math.sin(angle) * 9 });
+          playerBullets.push({ x: player.x, y: player.y, vx: Math.cos(angle) * 14, vy: Math.sin(angle) * 14 });
         }
       }
 
