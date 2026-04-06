@@ -132,7 +132,8 @@
     // Player stats
     const BASE_MAX_HP  = 7;
     const BASE_SPEED   = 3;
-    const BASE_FIRE_CD = 15;
+    const BASE_FIRE_CD    = 15;
+    const BASE_BULLET_SPD = 8;
 
     const RADIUS       = 15;
     const ENEMY_RADIUS = 18;
@@ -142,6 +143,7 @@
       vx: 0, vy: 0,
       hp: BASE_MAX_HP, maxHp: BASE_MAX_HP,
       speed: BASE_SPEED,
+      bulletSpd: BASE_BULLET_SPD,
       fireCD: BASE_FIRE_CD,
       fireCDTimer: 0,
       circleFire: 0,
@@ -296,10 +298,10 @@
     // Drops
     const drops = [];
     const DROP_RADIUS = 10;
-    const DROP_TYPES  = ['speed', 'firerate'];
-    const DROP_COLORS = { speed: '#00ccff', firerate: '#ffaa00', hp: '#ff4488', clearbullets: '#ffffff', circlefire: '#ff9900', missile: '#ff4400' };
-    const DROP_ICONS  = { speed: '⚡', firerate: '🔥', hp: '❤', clearbullets: '✨', circlefire: '🌀', missile: '🚀' };
-    const DROP_LABELS = { speed: 'VITESSE', firerate: 'CADENCE', hp: 'VIE', clearbullets: 'PURGE !', circlefire: 'CERCLE DE FEU', missile: 'MISSILE' };
+    const DROP_TYPES  = ['speed', 'velocity'];
+    const DROP_COLORS = { speed: '#00ccff', velocity: '#ffdd00', hp: '#ff4488', clearbullets: '#ffffff', circlefire: '#ff9900', missile: '#ff4400' };
+    const DROP_ICONS  = { speed: '⚡', velocity: '💥', hp: '❤', clearbullets: '✨', circlefire: '🌀', missile: '🚀' };
+    const DROP_LABELS = { speed: 'VITESSE', velocity: 'VÉLOCITÉ', hp: 'VIE', clearbullets: 'PURGE !', circlefire: 'CERCLE DE FEU', missile: 'MISSILE' };
     let screenFlash = 0;
     let playerDeathFired = false;
     const particles = [];
@@ -360,7 +362,7 @@
       if (Math.random() > 0.5) return;
       const available = DROP_TYPES.filter(t =>
         !(t === 'speed'    && player.speed   >= 8) &&
-        !(t === 'firerate' && player.fireCD  <= 5)
+        !(t === 'velocity' && player.bulletSpd >= 25)
       );
       if (available.length === 0) return;
       const type = available[Math.floor(Math.random() * available.length)];
@@ -482,8 +484,8 @@
     function applyDrop(type) {
       if (type === 'speed') {
         player.speed = Math.min(player.speed + 0.8, 8);
-      } else if (type === 'firerate') {
-        player.fireCD = Math.max(player.fireCD - 3, 5);
+      } else if (type === 'velocity') {
+        player.bulletSpd = Math.min(player.bulletSpd + 3, 25);
       } else if (type === 'hp') {
         player.hp = Math.min(player.hp + 2, Math.min(player.maxHp + 2, 15));
         player.maxHp = Math.min(Math.max(player.maxHp, player.hp), 15);
@@ -1040,7 +1042,7 @@
           player.fireCDTimer = 0;
           for (let k = 0; k < 8; k++) {
             const a = (k / 8) * Math.PI * 2;
-            playerBullets.push({ x: player.x, y: player.y, vx: Math.cos(a) * 25, vy: Math.sin(a) * 25 });
+            playerBullets.push({ x: player.x, y: player.y, vx: Math.cos(a) * player.bulletSpd, vy: Math.sin(a) * player.bulletSpd });
           }
         }
       } else if ((mouse.down || gpFire || touchFire) && player.hp > 0) {
@@ -1048,7 +1050,7 @@
         if (player.fireCDTimer >= player.fireCD) {
           player.fireCDTimer = 0;
           const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
-          playerBullets.push({ x: player.x, y: player.y, vx: Math.cos(angle) * 25, vy: Math.sin(angle) * 25 });
+          playerBullets.push({ x: player.x, y: player.y, vx: Math.cos(angle) * player.bulletSpd, vy: Math.sin(angle) * player.bulletSpd });
         }
       }
 
@@ -1168,7 +1170,7 @@
       const niv      = diff.niveau || 1;
       const nivColor = niv <= 3 ? '#88ff88' : niv <= 6 ? '#ffaa00' : '#ff4444';
       hudText(`⚡  ${player.speed.toFixed(1)}`,           pad, y0,          '#00ccff');
-      hudText(`🔥  ${(60/player.fireCD).toFixed(1)}/s`,   pad, y0 + lh,     '#ffaa00');
+      hudText(`💥  ${player.bulletSpd.toFixed(0)} vel`,    pad, y0 + lh,     '#ffdd00');
       hudText(`☠   ${kills} kills`,                        pad, y0 + lh * 2, '#ff6677');
       hudText(`★   NIV ${niv}`,                            pad, y0 + lh * 3, nivColor);
 
@@ -1590,8 +1592,8 @@
 
 function restartGame() {
       player.hp = BASE_MAX_HP; player.maxHp = BASE_MAX_HP;
-      player.speed = BASE_SPEED; player.fireCD = BASE_FIRE_CD;
-      player.fireCDTimer = 0;
+      player.speed = BASE_SPEED; player.bulletSpd = BASE_BULLET_SPD;
+      player.fireCD = BASE_FIRE_CD; player.fireCDTimer = 0;
       player.x = MAP_W / 2; player.y = MAP_H / 2;
       enemies.length = 0; playerBullets.length = 0;
       enemyBullets.length = 0; drops.length = 0;
@@ -1778,7 +1780,7 @@ function restartGame() {
         'plus tu dures, plus ça devient ingérable.',
         '',
         'Récolte des items pour survivre :',
-        'vitesse, cadence, vie, armes inédites etc...',
+        'vitesse, vélocité, vie, armes inédites etc...',
         '',
         'Stack des purges et active-les',
         "quand t'es submergé.",
