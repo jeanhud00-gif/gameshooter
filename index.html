@@ -267,8 +267,10 @@
 
     canvas.addEventListener('mousedown', e => {
       if (e.button === 0) mouse.down = true;
+      if (e.button === 1) { e.preventDefault(); placeMine(); }
       if (e.button === 2) fireMissile();
     });
+    document.addEventListener('wheel', e => { e.preventDefault(); placeMine(); }, { passive: false });
     canvas.addEventListener('mouseup', e => { if (e.button === 0) mouse.down = false; });
     canvas.addEventListener('contextmenu', e => e.preventDefault());
 
@@ -299,9 +301,9 @@
     const drops = [];
     const DROP_RADIUS = 10;
     const DROP_TYPES  = ['speed', 'velocity'];
-    const DROP_COLORS = { speed: '#00ccff', velocity: '#ffdd00', hp: '#ff4488', clearbullets: '#ffffff', circlefire: '#ff9900', missile: '#ff4400' };
-    const DROP_ICONS  = { speed: '⚡', velocity: '💥', hp: '❤', clearbullets: '✨', circlefire: '🌀', missile: '🚀' };
-    const DROP_LABELS = { speed: 'VITESSE', velocity: 'VÉLOCITÉ', hp: 'VIE', clearbullets: 'PURGE !', circlefire: 'CERCLE DE FEU', missile: 'MISSILE' };
+    const DROP_COLORS = { speed: '#00ccff', velocity: '#ffdd00', hp: '#ff4488', clearbullets: '#ffffff', circlefire: '#ff9900', missile: '#ff4400', mine: '#ff6600' };
+    const DROP_ICONS  = { speed: '⚡', velocity: '💥', hp: '❤', clearbullets: '✨', circlefire: '🌀', missile: '🚀', mine: '☢' };
+    const DROP_LABELS = { speed: 'VITESSE', velocity: 'VÉLOCITÉ', hp: 'VIE', clearbullets: 'PURGE !', circlefire: 'CERCLE DE FEU', missile: 'MISSILE', mine: 'BOMBE NUCLÉAIRE' };
     let screenFlash = 0;
     let playerDeathFired = false;
     const particles = [];
@@ -309,8 +311,11 @@
     let purgeStock   = 0;
     let missileStock = 0;
     let missiles     = [];
+    let mineStock    = 0;
+    let mines        = [];
     let gpPrevY      = false;
     let gpPrevX      = false;
+    let gpPrevLB     = false;
 
     const notifications = [];
 
@@ -358,6 +363,7 @@
       if (Math.random() < 0.01) { drops.push({ x, y, type: 'circlefire', age: 0 }); return; }
       if (Math.random() < 0.01) { drops.push({ x, y, type: 'clearbullets', age: 0 }); return; }
       if (Math.random() < 0.05) { drops.push({ x, y, type: 'missile', age: 0 }); return; }
+      if (Math.random() < 0.03) { drops.push({ x, y, type: 'mine',    age: 0 }); return; }
       if (Math.random() < 0.04) { drops.push({ x, y, type: 'hp', age: 0 }); return; }
       if (Math.random() > 0.5) return;
       const available = DROP_TYPES.filter(t =>
@@ -493,6 +499,8 @@
         purgeStock++;
       } else if (type === 'missile') {
         missileStock++;
+      } else if (type === 'mine') {
+        mineStock++;
       } else if (type === 'circlefire') {
         player.circleFire = 1800; // 30s à 60fps
       }
@@ -586,6 +594,7 @@
               if (enemies[j].hp <= 0) {
                 spawnExplosion(enemies[j].x, enemies[j].y, '#ff4400');
                 spawnDrop(enemies[j].x, enemies[j].y);
+                purgeBulletsOnKill(enemies[j].id);
                 enemies.splice(j, 1);
                 kills++;
               }
@@ -668,6 +677,186 @@
       }
     }
 
+    const MINE_EXPLODE_R  = 220;  // rayon dégâts nucléaires
+    const MINE_DAMAGE     = 10;   // dégâts par ennemi touché
+    const MINE_FUSE       = 180;  // mèche 3 secondes (60fps)
+
+    function spawnMineExplosion(x, y) {
+      // ═══ FLASH NUCLÉAIRE — couches multiples ═══
+      particles.push({ type: 'flash', x, y, r: 5,   maxR: 380, color: '#ffffff', life: 1, decay: 0.022 });
+      particles.push({ type: 'flash', x, y, r: 10,  maxR: 280, color: '#fffbe0', life: 1, decay: 0.030 });
+      particles.push({ type: 'flash', x, y, r: 15,  maxR: 200, color: '#ffcc44', life: 1, decay: 0.038 });
+      particles.push({ type: 'flash', x, y, r: 20,  maxR: 140, color: '#ff6600', life: 1, decay: 0.048 });
+      particles.push({ type: 'flash', x, y, r: 8,   maxR:  90, color: '#ff2200', life: 1, decay: 0.065 });
+      // ═══ ONDES DE CHOC — 4 anneaux concentriques ═══
+      particles.push({ type: 'ring', x, y, r: 12, maxR: MINE_EXPLODE_R * 1.35, color: '#ffffff',  life: 1, decay: 0.018 });
+      particles.push({ type: 'ring', x, y, r: 12, maxR: MINE_EXPLODE_R * 1.10, color: '#ffee88',  life: 1, decay: 0.022 });
+      particles.push({ type: 'ring', x, y, r: 10, maxR: MINE_EXPLODE_R,        color: '#ff8800',  life: 1, decay: 0.027 });
+      particles.push({ type: 'ring', x, y, r: 8,  maxR: MINE_EXPLODE_R * 0.65, color: '#ff4400',  life: 1, decay: 0.034 });
+      // ═══ ÉTINCELLES — 120 projectiles ═══
+      for (let i = 0; i < 120; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const spd = 2 + Math.random() * 16;
+        particles.push({ type: 'spark', x, y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+          life: 1, decay: 0.012 + Math.random() * 0.018, size: 2 + Math.random() * 5, color: Math.random() > 0.5 ? '#ff8800' : '#ffdd00' });
+      }
+      // ═══ DÉBRIS LOURDS — 40 fragments ═══
+      for (let i = 0; i < 40; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const spd = 1 + Math.random() * 9;
+        const col = ['#cc4400','#ff8800','#884400','#ffcc00'][Math.floor(Math.random()*4)];
+        particles.push({ type: 'debris', x, y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+          rot: Math.random() * Math.PI * 2, rotSpd: (Math.random() - 0.5) * 0.5,
+          life: 1, decay: 0.007 + Math.random() * 0.01, size: 4 + Math.random() * 14, color: col });
+      }
+      // ═══ CHAMPIGNON NUCLÉAIRE — fumée massive ═══
+      for (let i = 0; i < 36; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const spd = 0.2 + Math.random() * 2.5;
+        // montée centrale + dispersion latérale
+        const upBias = i < 18 ? -(0.8 + Math.random() * 1.5) : 0;
+        particles.push({ type: 'smoke', x, y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd + upBias,
+          life: 1, decay: 0.003 + Math.random() * 0.005, size: 35 + Math.random() * 55 });
+      }
+    }
+
+    function placeMine() {
+      if (mineStock <= 0 || player.hp <= 0) return;
+      mineStock--;
+      mines.push({ x: player.x, y: player.y, age: 0 });
+      notifications.push({ text: '☢ BOMBE NUCLÉAIRE — 3s', color: '#ff8800', age: 0, x: player.x, y: player.y - 40 });
+    }
+
+    function updateMines() {
+      for (let i = mines.length - 1; i >= 0; i--) {
+        const m = mines[i];
+        m.age++;
+
+        // Détonation automatique au terme du compte à rebours
+        if (m.age >= MINE_FUSE) {
+          spawnMineExplosion(m.x, m.y);
+          screenFlash = 45;
+          // Dégâts de zone dégressifs selon distance
+          for (let k = enemies.length - 1; k >= 0; k--) {
+            const d = dist(m, enemies[k]);
+            if (d < MINE_EXPLODE_R) {
+              const dmg = MINE_DAMAGE * (1 - d / MINE_EXPLODE_R * 0.5);
+              enemies[k].hp -= dmg;
+              spawnImpact(enemies[k].x, enemies[k].y, '#ff6600');
+              if (enemies[k].hp <= 0) {
+                spawnExplosion(enemies[k].x, enemies[k].y, '#ff4400');
+                spawnDrop(enemies[k].x, enemies[k].y);
+                purgeBulletsOnKill(enemies[k].id);
+                enemies.splice(k, 1);
+                kills++;
+              }
+            }
+          }
+          // Détruit toutes les bullets ennemies dans la zone
+          for (let k = enemyBullets.length - 1; k >= 0; k--) {
+            if (dist(m, enemyBullets[k]) < MINE_EXPLODE_R) enemyBullets.splice(k, 1);
+          }
+          mines.splice(i, 1);
+        }
+      }
+    }
+
+    function drawMines() {
+      const now = performance.now();
+      for (const m of mines) {
+        const remaining = MINE_FUSE - m.age;
+        const progress  = m.age / MINE_FUSE;           // 0→1
+        const secsLeft  = Math.ceil(remaining / 60);   // 3, 2, 1
+        const lastSec   = remaining <= 60;
+        const blinkOn   = !lastSec || (Math.floor(m.age / 5) % 2 === 0);
+
+        ctx.save();
+        ctx.translate(m.x, m.y);
+
+        // ── Halo au sol — cercle simple, PAS de gradient (perf) ──
+        const haloA = blinkOn ? (0.04 + 0.02 * Math.sin(now / 250)) : 0.08;
+        ctx.globalAlpha = haloA;
+        ctx.fillStyle = lastSec ? '#ff2200' : '#ff6600';
+        ctx.beginPath(); ctx.arc(0, 0, MINE_EXPLODE_R, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+
+        // ── Arc de progression ──
+        const arcR = 22;
+        ctx.globalAlpha = 0.3;
+        ctx.strokeStyle = '#333344';
+        ctx.lineWidth   = 3;
+        ctx.beginPath(); ctx.arc(0, 0, arcR, 0, Math.PI * 2); ctx.stroke();
+
+        const arcColor = progress < 0.5 ? '#44ff88' : progress < 0.8 ? '#ff8800' : '#ff2200';
+        ctx.globalAlpha = blinkOn ? 0.9 : 0.45;
+        ctx.strokeStyle = arcColor;
+        ctx.lineWidth   = 3;
+        // arc décroissant (no shadowBlur — trop lent)
+        const arcEnd = -Math.PI / 2 + Math.PI * 2 * (1 - progress);
+        ctx.beginPath();
+        ctx.arc(0, 0, arcR, -Math.PI / 2, arcEnd);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+
+        // ── Corps de la bombe ──
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.beginPath(); ctx.ellipse(3, 5, 13, 5, 0, 0, Math.PI * 2); ctx.fill();
+
+        // Corps ogive (gradient radial petit — acceptable)
+        const bg = ctx.createRadialGradient(-4, -5, 0, 0, 0, 15);
+        bg.addColorStop(0, '#aaaacc');
+        bg.addColorStop(0.45, '#55556a');
+        bg.addColorStop(1, '#1a1a22');
+        ctx.fillStyle = bg;
+        ctx.beginPath(); ctx.ellipse(0, 0, 10, 16, 0, 0, Math.PI * 2); ctx.fill();
+
+        ctx.strokeStyle = '#8888aa'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.ellipse(0, 0, 10, 16, 0, 0, Math.PI * 2); ctx.stroke();
+
+        // Bandes jaunes
+        ctx.strokeStyle = 'rgba(255,200,0,0.45)'; ctx.lineWidth = 1.5;
+        for (const yy of [-6, 0, 6]) {
+          ctx.beginPath(); ctx.moveTo(-8, yy); ctx.lineTo(8, yy); ctx.stroke();
+        }
+
+        // Symbole ☢ — 3 secteurs
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = '#ffdd00';
+        for (let k = 0; k < 3; k++) {
+          const a0 = (k / 3) * Math.PI * 2 - Math.PI / 2;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.arc(0, 0, 5, a0 + 0.3, a0 + Math.PI * 2 / 3 - 0.3);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#1a1a22';
+        ctx.beginPath(); ctx.arc(0, 0, 2, 0, Math.PI * 2); ctx.fill();
+
+        // ── LED — simple couleur, pas de shadowBlur ──
+        const ledFreq  = 80 + (1 - progress) * 280;
+        const ledPulse = 0.45 + 0.55 * Math.sin(now / ledFreq);
+        ctx.globalAlpha = blinkOn ? ledPulse : ledPulse * 0.4;
+        ctx.fillStyle   = lastSec ? '#ff0000' : '#ff8800';
+        ctx.beginPath(); ctx.arc(0, -14, 3.5, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+
+        ctx.restore();
+
+        // ── Compte à rebours (shadowBlur une seule fois, petit rayon) ──
+        if (blinkOn) {
+          ctx.save();
+          ctx.font        = `bold ${lastSec ? 24 : 18}px monospace`;
+          ctx.textAlign   = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle   = lastSec ? '#ff2200' : (secsLeft === 2 ? '#ff8800' : '#ffdd00');
+          ctx.fillText(secsLeft, m.x, m.y - 38);
+          ctx.restore();
+        }
+      }
+    }
+
     function updateDrops() {
       for (let i = drops.length - 1; i >= 0; i--) {
         const d = drops[i];
@@ -742,6 +931,7 @@
     // Enemies
     const enemies = [];
     let spawnTimer = 0;
+    let enemyIdCounter = 0;
 
     function spawnEnemy() {
       let x, y;
@@ -752,7 +942,16 @@
       else                 { x = 0; y = Math.random() * MAP_H; }
       const patterns = ['single', 'spread', 'circle', 'burst', 'double', 'spiral', 'shotgun', 'cross', 'sniper'];
       const pattern = patterns[Math.floor(Math.random() * patterns.length)];
-      enemies.push({ x, y, hp: diff.enemyHp, shootTimer: 0, angle: 0, pattern, burstCount: 0, burstTimer: 0, rotAngle: Math.random() * Math.PI * 2, spawnDelay: 120 });
+      enemies.push({ id: ++enemyIdCounter, x, y, hp: diff.enemyHp, shootTimer: 0, angle: 0, pattern, burstCount: 0, burstTimer: 0, rotAngle: Math.random() * Math.PI * 2, spawnDelay: 120 });
+    }
+
+    // Supprime aléatoirement 50% des projectiles appartenant à un ennemi tué
+    function purgeBulletsOnKill(ownerId) {
+      for (let i = enemyBullets.length - 1; i >= 0; i--) {
+        if (enemyBullets[i].ownerId === ownerId && Math.random() < 0.5) {
+          enemyBullets.splice(i, 1);
+        }
+      }
     }
 
     function drawEnemyFace(x, y, angle, pattern) {
@@ -955,7 +1154,7 @@
           if (e.burstTimer >= 10) {
             e.burstTimer = 0;
             e.burstCount--;
-            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(e.angle) * diff.bulletFast, vy: Math.sin(e.angle) * diff.bulletFast });
+            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(e.angle) * diff.bulletFast, vy: Math.sin(e.angle) * diff.bulletFast, pattern: e.pattern, ownerId: e.id, age: 0 });
           }
         }
 
@@ -972,46 +1171,44 @@
         if (e.shootTimer >= shootCD) {
           e.shootTimer = 0;
           const a = angle;
-          if (e.pattern === 'single') {
-            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.6, vy: Math.sin(a) * 2.6 });
-          } else if (e.pattern === 'spread') {
+          const pat = e.pattern;
+          const eid = e.id;
+          if (pat === 'single') {
+            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.6, vy: Math.sin(a) * 2.6, pattern: pat, ownerId: eid, age: 0 });
+          } else if (pat === 'spread') {
             for (let s = -2; s <= 2; s++) {
               const sa = a + s * 0.28;
-              enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(sa) * diff.bulletSlow, vy: Math.sin(sa) * diff.bulletSlow });
+              enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(sa) * diff.bulletSlow, vy: Math.sin(sa) * diff.bulletSlow, pattern: pat, ownerId: eid, age: 0 });
             }
-          } else if (e.pattern === 'circle') {
+          } else if (pat === 'circle') {
             for (let k = 0; k < 6; k++) {
               const ca = (k / 8) * Math.PI * 2;
-              enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(ca) * diff.bulletSlow, vy: Math.sin(ca) * diff.bulletSlow });
+              enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(ca) * diff.bulletSlow, vy: Math.sin(ca) * diff.bulletSlow, pattern: pat, ownerId: eid, age: 0 });
             }
-          } else if (e.pattern === 'burst') {
+          } else if (pat === 'burst') {
             e.burstCount = 3;
             e.burstTimer = 0;
-            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.6, vy: Math.sin(a) * 2.6 });
-          } else if (e.pattern === 'double') {
+            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 2.6, vy: Math.sin(a) * 2.6, pattern: pat, ownerId: eid, age: 0 });
+          } else if (pat === 'double') {
             const px = -Math.sin(a) * 8, py = Math.cos(a) * 8;
-            enemyBullets.push({ x: e.x + px, y: e.y + py, vx: Math.cos(a) * diff.bulletSlow, vy: Math.sin(a) * diff.bulletSlow });
-            enemyBullets.push({ x: e.x - px, y: e.y - py, vx: Math.cos(a) * diff.bulletSlow, vy: Math.sin(a) * diff.bulletSlow });
-          } else if (e.pattern === 'spiral') {
-            // Bullet rotative : chaque tir tourne de ~27°, crée une spirale
+            enemyBullets.push({ x: e.x + px, y: e.y + py, vx: Math.cos(a) * diff.bulletSlow, vy: Math.sin(a) * diff.bulletSlow, pattern: pat, ownerId: eid, age: 0 });
+            enemyBullets.push({ x: e.x - px, y: e.y - py, vx: Math.cos(a) * diff.bulletSlow, vy: Math.sin(a) * diff.bulletSlow, pattern: pat, ownerId: eid, age: 0 });
+          } else if (pat === 'spiral') {
             e.rotAngle += 0.47;
-            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(e.rotAngle) * diff.bulletSlow, vy: Math.sin(e.rotAngle) * diff.bulletSlow });
-          } else if (e.pattern === 'shotgun') {
-            // Large cône de 9 bullets → dévastateur à courte portée
+            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(e.rotAngle) * diff.bulletSlow, vy: Math.sin(e.rotAngle) * diff.bulletSlow, pattern: pat, ownerId: eid, age: 0 });
+          } else if (pat === 'shotgun') {
             for (let s = -3; s <= 3; s++) {
               const sa = a + s * 0.18;
-              enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(sa) * diff.bulletSlow, vy: Math.sin(sa) * diff.bulletSlow });
+              enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(sa) * diff.bulletSlow, vy: Math.sin(sa) * diff.bulletSlow, pattern: pat, ownerId: eid, age: 0 });
             }
-          } else if (e.pattern === 'cross') {
-            // 4 bullets : vise le joueur + 3 autres directions (90°, 180°, 270°)
+          } else if (pat === 'cross') {
             for (let k = 0; k < 4; k++) {
               const ca = a + k * (Math.PI / 2);
-              enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(ca) * diff.bulletSlow, vy: Math.sin(ca) * diff.bulletSlow });
+              enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(ca) * diff.bulletSlow, vy: Math.sin(ca) * diff.bulletSlow, pattern: pat, ownerId: eid, age: 0 });
             }
-          } else if (e.pattern === 'sniper') {
-            // Long CD mais bullet ultra-rapide — difficile à esquiver
+          } else if (pat === 'sniper') {
             const speed = Math.min(4.5, diff.bulletFast * 1.25);
-            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed });
+            enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, pattern: pat, ownerId: eid, age: 0 });
           }
         }
         } // fin du else spawnDelay
@@ -1028,6 +1225,7 @@
         if (e.hp <= 0) {
           spawnExplosion(e.x, e.y, enemyColor(e.pattern));
           spawnDrop(e.x, e.y);
+          purgeBulletsOnKill(e.id);
           enemies.splice(i, 1);
           kills++;
         }
@@ -1138,7 +1336,7 @@
       // Stats fixes : HP + 4 lignes + purge (toujours) + cercle si actif
       const hasCircle  = player.circleFire > 0;
       const circleRows = hasCircle ? 2 : 0;
-      const panelH = barH + lh * (6 + circleRows) + Math.round(30 * s);
+      const panelH = barH + lh * (7 + circleRows) + Math.round(30 * s);
       const panelW = barW + Math.round(16 * s);
 
       // ── Fond panneau ──
@@ -1191,9 +1389,18 @@
         hudText(`🚀  x0`, pad, mY, 'rgba(255,100,30,0.22)');
       }
 
+      // ── Mine — toujours visible ──
+      ctx.font = `bold ${fs}px monospace`;
+      const miY = y0 + lh * 6;
+      if (mineStock > 0) {
+        hudText(`☢  x${mineStock}  [MOLETTE]`, pad, miY, '#ff8800');
+      } else {
+        hudText(`☢  x0`, pad, miY, 'rgba(255,136,0,0.22)');
+      }
+
       // ── Cercle de feu — ligne + barre ──
       if (hasCircle) {
-        const bY  = y0 + lh * 6;
+        const bY  = y0 + lh * 7;
         const bH2 = Math.round(14 * s);
         ctx.font = `bold ${fs}px monospace`;
         hudText(`🌀  CERCLE`, pad, bY, '#ff9900');
@@ -1374,6 +1581,11 @@
         const xPressed = gp.buttons[2]?.pressed;
         if (xPressed && !gpPrevX) fireMissile();
         gpPrevX = xPressed;
+
+        // LB (4) → mine
+        const lbPressed = gp.buttons[4]?.pressed;
+        if (lbPressed && !gpPrevLB) placeMine();
+        gpPrevLB = lbPressed;
       }
 
       const len = Math.hypot(dx, dy);
@@ -1387,6 +1599,7 @@
       updateEnemies();
       updateBullets();
       updateMissiles();
+      updateMines();
       updateDrops();
       updateParticles();
       updateHpHistory();
@@ -1449,6 +1662,7 @@
         ctx.fill();
         ctx.restore();
       }
+      drawMines();
       drawMissiles();
       drawHead(player.x, player.y, player.angle);
 
@@ -1600,12 +1814,13 @@ function restartGame() {
       particles.length = 0; playerDeathFired = false;
       notifications.length = 0; spawnTimer = 0;
       gameStartTime = Date.now(); finalTime = 0; scoreSaved = false; kills = 0;
-      hpHistory.length = 0; hpSampleTick = 0; player.circleFire = 0; purgeStock = 0; missileStock = 0; missiles.length = 0;
+      hpHistory.length = 0; hpSampleTick = 0; player.circleFire = 0; purgeStock = 0; missileStock = 0; missiles.length = 0; mineStock = 0; mines.length = 0;
     }
 
     document.addEventListener('keydown', e => {
       if (e.key.toLowerCase() === 'r' && player.hp <= 0) restartGame();
       if (e.code === 'Space') { e.preventDefault(); usePurge(); }
+      if (e.code === 'KeyE') placeMine();
     });
 
     canvas.addEventListener('click', e => {
