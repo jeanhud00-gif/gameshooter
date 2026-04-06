@@ -263,8 +263,11 @@
       }
     }
 
-    canvas.addEventListener('mousedown', e => { if (e.button === 0) mouse.down = true; });
-    canvas.addEventListener('mouseup',   e => { if (e.button === 0) mouse.down = false; });
+    canvas.addEventListener('mousedown', e => {
+      if (e.button === 0) mouse.down = true;
+      if (e.button === 2) fireMissile();
+    });
+    canvas.addEventListener('mouseup', e => { if (e.button === 0) mouse.down = false; });
     canvas.addEventListener('contextmenu', e => e.preventDefault());
 
     canvas.addEventListener('mousemove', e => {
@@ -294,15 +297,18 @@
     const drops = [];
     const DROP_RADIUS = 10;
     const DROP_TYPES  = ['speed', 'firerate'];
-    const DROP_COLORS = { speed: '#00ccff', firerate: '#ffaa00', hp: '#ff4488', clearbullets: '#ffffff', circlefire: '#ff9900' };
-    const DROP_ICONS  = { speed: '⚡', firerate: '🔥', hp: '❤', clearbullets: '✨', circlefire: '🌀' };
-    const DROP_LABELS = { speed: 'VITESSE', firerate: 'CADENCE', hp: 'VIE', clearbullets: 'PURGE !', circlefire: 'CERCLE DE FEU' };
+    const DROP_COLORS = { speed: '#00ccff', firerate: '#ffaa00', hp: '#ff4488', clearbullets: '#ffffff', circlefire: '#ff9900', missile: '#ff4400' };
+    const DROP_ICONS  = { speed: '⚡', firerate: '🔥', hp: '❤', clearbullets: '✨', circlefire: '🌀', missile: '🚀' };
+    const DROP_LABELS = { speed: 'VITESSE', firerate: 'CADENCE', hp: 'VIE', clearbullets: 'PURGE !', circlefire: 'CERCLE DE FEU', missile: 'MISSILE' };
     let screenFlash = 0;
     let playerDeathFired = false;
     const particles = [];
     let resetBtnArea = null;
-    let purgeStock = 0;
-    let gpPrevY = false;
+    let purgeStock   = 0;
+    let missileStock = 0;
+    let missiles     = [];
+    let gpPrevY      = false;
+    let gpPrevX      = false;
 
     const notifications = [];
 
@@ -347,15 +353,9 @@
     }
 
     function spawnDrop(x, y) {
-      if (Math.random() < 0.01) {
-        drops.push({ x, y, type: 'circlefire', age: 0 });
-        return;
-      }
-      // 0.5% de chance de drop clearbullets, indépendant du reste
-      if (Math.random() < 0.01) {
-        drops.push({ x, y, type: 'clearbullets', age: 0 });
-        return;
-      }
+      if (Math.random() < 0.01) { drops.push({ x, y, type: 'circlefire', age: 0 }); return; }
+      if (Math.random() < 0.01) { drops.push({ x, y, type: 'clearbullets', age: 0 }); return; }
+      if (Math.random() < 0.05) { drops.push({ x, y, type: 'missile', age: 0 }); return; }
       if (Math.random() < 0.04) { drops.push({ x, y, type: 'hp', age: 0 }); return; }
       if (Math.random() > 0.5) return;
       const available = DROP_TYPES.filter(t =>
@@ -489,6 +489,8 @@
         player.maxHp = Math.min(Math.max(player.maxHp, player.hp), 15);
       } else if (type === 'clearbullets') {
         purgeStock++;
+      } else if (type === 'missile') {
+        missileStock++;
       } else if (type === 'circlefire') {
         player.circleFire = 1800; // 30s à 60fps
       }
@@ -501,6 +503,167 @@
       enemyBullets.length = 0;
       screenFlash = 18;
       notifications.push({ text: '✨ PURGE !', color: '#ffffff', age: 0, x: player.x, y: player.y - 40 });
+    }
+
+    function fireMissile() {
+      if (missileStock <= 0 || player.hp <= 0) return;
+      missileStock--;
+      // Cherche l'ennemi le plus proche comme cible initiale
+      let target = null;
+      let minD = Infinity;
+      for (const e of enemies) {
+        const d = dist(player, e);
+        if (d < minD) { minD = d; target = e; }
+      }
+      const angle = target
+        ? Math.atan2(target.y - player.y, target.x - player.x)
+        : player.angle;
+      missiles.push({
+        x: player.x, y: player.y,
+        vx: Math.cos(angle) * 5, vy: Math.sin(angle) * 5,
+        angle,
+        target,
+        trail: [],
+        age: 0,
+      });
+      notifications.push({ text: '🚀 MISSILE !', color: '#ff4400', age: 0, x: player.x, y: player.y - 40 });
+    }
+
+    const MISSILE_RADIUS = 60; // rayon dégâts de zone
+
+    function updateMissiles() {
+      for (let i = missiles.length - 1; i >= 0; i--) {
+        const m = missiles[i];
+        m.age++;
+
+        // Tracking : tourne vers la cible si elle existe encore
+        if (m.target && enemies.includes(m.target)) {
+          const ta = Math.atan2(m.target.y - m.y, m.target.x - m.x);
+          let da = ta - m.angle;
+          while (da > Math.PI)  da -= Math.PI * 2;
+          while (da < -Math.PI) da += Math.PI * 2;
+          m.angle += da * 0.08;
+        } else {
+          // Cherche une nouvelle cible proche
+          let best = null, bd = Infinity;
+          for (const e of enemies) {
+            const d = dist(m, e);
+            if (d < bd) { bd = d; best = e; }
+          }
+          m.target = best;
+        }
+
+        const spd = Math.min(4 + m.age * 0.04, 12);
+        m.vx = Math.cos(m.angle) * spd;
+        m.vy = Math.sin(m.angle) * spd;
+        m.x += m.vx; m.y += m.vy;
+
+        // Traînée
+        m.trail.push({ x: m.x, y: m.y, age: 0 });
+        for (const t of m.trail) t.age++;
+        while (m.trail.length > 28) m.trail.shift();
+
+        // Hors écran
+        if (m.x < -50 || m.x > MAP_W + 50 || m.y < -50 || m.y > MAP_H + 50) {
+          missiles.splice(i, 1); continue;
+        }
+
+        // Collision ennemi
+        let hit = false;
+        for (const e of enemies) {
+          if (dist(m, e) < ENEMY_RADIUS + 8) { hit = true; break; }
+        }
+        if (hit) {
+          // Explosion de zone
+          spawnExplosion(m.x, m.y, '#ff6600');
+          spawnExplosion(m.x, m.y, '#ffcc00');
+          for (let j = enemies.length - 1; j >= 0; j--) {
+            if (dist(m, enemies[j]) < MISSILE_RADIUS) {
+              enemies[j].hp -= 3;
+              spawnImpact(enemies[j].x, enemies[j].y, '#ff6600');
+              if (enemies[j].hp <= 0) {
+                spawnExplosion(enemies[j].x, enemies[j].y, '#ff4400');
+                spawnDrop(enemies[j].x, enemies[j].y);
+                enemies.splice(j, 1);
+                kills++;
+              }
+            }
+          }
+          // Détruit aussi les bullets ennemies dans la zone
+          for (let j = enemyBullets.length - 1; j >= 0; j--) {
+            if (dist(m, enemyBullets[j]) < MISSILE_RADIUS) enemyBullets.splice(j, 1);
+          }
+          screenFlash = 10;
+          missiles.splice(i, 1);
+        }
+      }
+    }
+
+    function drawMissiles() {
+      for (const m of missiles) {
+        ctx.save();
+
+        // Traînée fumée + feu
+        for (let ti = 0; ti < m.trail.length; ti++) {
+          const t  = m.trail[ti];
+          const pct = ti / m.trail.length;
+          const alpha = pct * 0.7;
+          const r = 3 + (1 - pct) * 8;
+          // Fumée
+          ctx.globalAlpha = alpha * 0.45;
+          ctx.fillStyle = `rgb(80,70,60)`;
+          ctx.beginPath(); ctx.arc(t.x, t.y, r * 1.5, 0, Math.PI * 2); ctx.fill();
+          // Feu
+          ctx.globalAlpha = alpha * 0.9;
+          const fireColor = pct > 0.6 ? '#ff6600' : '#ffdd00';
+          ctx.fillStyle = fireColor;
+          ctx.beginPath(); ctx.arc(t.x, t.y, r * 0.7, 0, Math.PI * 2); ctx.fill();
+        }
+
+        // Corps missile
+        ctx.globalAlpha = 1;
+        ctx.translate(m.x, m.y);
+        ctx.rotate(m.angle + Math.PI / 2);
+
+        // Glow
+        const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, 16);
+        glow.addColorStop(0, 'rgba(255,120,0,0.4)');
+        glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI * 2); ctx.fill();
+
+        // Fuselage
+        ctx.fillStyle = '#dde0e8';
+        ctx.beginPath();
+        ctx.moveTo(0, -12);
+        ctx.bezierCurveTo(5, -6, 5, 4, 4, 10);
+        ctx.lineTo(-4, 10);
+        ctx.bezierCurveTo(-5, 4, -5, -6, 0, -12);
+        ctx.closePath();
+        ctx.fill();
+
+        // Nez rouge
+        ctx.fillStyle = '#cc2200';
+        ctx.beginPath();
+        ctx.moveTo(0, -12);
+        ctx.bezierCurveTo(4, -8, 4, -4, 0, -4);
+        ctx.bezierCurveTo(-4, -4, -4, -8, 0, -12);
+        ctx.closePath();
+        ctx.fill();
+
+        // Ailettes
+        ctx.fillStyle = '#8899bb';
+        ctx.beginPath(); ctx.moveTo(-4, 6); ctx.lineTo(-10, 12); ctx.lineTo(-4, 10); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(4, 6);  ctx.lineTo(10, 12);  ctx.lineTo(4, 10);  ctx.closePath(); ctx.fill();
+
+        // Réacteur
+        ctx.fillStyle = '#ff6600';
+        ctx.shadowColor = '#ff8800'; ctx.shadowBlur = 8;
+        ctx.beginPath(); ctx.ellipse(0, 11, 3, 4, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.restore();
+      }
     }
 
     function updateDrops() {
@@ -964,78 +1127,95 @@
 
     function drawHUD() {
       const s    = isMobile ? Math.min(MAP_W, MAP_H) / 320 : 1;
-      const fs   = Math.round(14 * s);
-      const pad  = Math.round(10 * s);
-      const lh   = Math.round(20 * s);
-      const barW = Math.round(140 * s);
-      const barH = Math.round(18 * s);
+      const fs   = Math.round(13 * s);
+      const pad  = Math.round(12 * s);
+      const lh   = Math.round(22 * s);
+      const barW = Math.round(150 * s);
+      const barH = Math.round(14 * s);
 
-      // Panneau semi-transparent gauche
-      const panelW = barW + Math.round(12 * s);
-      const panelH = barH + lh * 4 + Math.round(28 * s);
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      ctx.beginPath();
-      ctx.roundRect(pad - 6, pad - 6, panelW, panelH, 8);
-      ctx.fill();
+      // Stats fixes : HP + 4 lignes + purge (toujours) + cercle si actif
+      const hasCircle  = player.circleFire > 0;
+      const circleRows = hasCircle ? 2 : 0;
+      const panelH = barH + lh * (6 + circleRows) + Math.round(30 * s);
+      const panelW = barW + Math.round(16 * s);
 
-      // Barre HP avec texte centré dedans
-      const hpColor = player.hp > player.maxHp * 0.4 ? '#33dd33' : player.hp > player.maxHp * 0.2 ? '#ffaa00' : '#ff3333';
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(pad, pad, barW, barH);
+      // ── Fond panneau ──
+      ctx.save();
+      ctx.fillStyle  = 'rgba(4,8,20,0.75)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+      ctx.lineWidth  = 1;
+      ctx.beginPath(); ctx.roundRect(pad - 8, pad - 8, panelW, panelH, 10);
+      ctx.fill(); ctx.stroke();
+      ctx.restore();
+
+      // ── Barre HP ──
+      const hpRatio = player.hp / player.maxHp;
+      const hpColor = hpRatio > 0.4 ? '#33dd66' : hpRatio > 0.2 ? '#ffaa00' : '#ff3333';
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.beginPath(); ctx.roundRect(pad, pad, barW, barH, 3); ctx.fill();
       ctx.fillStyle = hpColor;
-      ctx.fillRect(pad, pad, barW * (player.hp / player.maxHp), barH);
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1;
-      ctx.strokeRect(pad, pad, barW, barH);
-      ctx.font = `bold ${fs}px monospace`;
+      ctx.beginPath(); ctx.roundRect(pad, pad, barW * hpRatio, barH, 3); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(pad, pad, barW, barH, 3); ctx.stroke();
+      ctx.font = `bold ${Math.round(11 * s)}px monospace`;
       ctx.textAlign = 'center';
-      hudText(`❤ ${player.hp} / ${player.maxHp}`, pad + barW / 2, pad + barH - Math.round(3 * s), 'white');
+      hudText(`❤  ${player.hp} / ${player.maxHp}`, pad + barW / 2, pad + barH - 3, 'white');
       ctx.textAlign = 'left';
 
-      // Stats
-      const y0 = pad + barH + lh;
+      // ── Stats ──
+      const y0 = pad + barH + lh * 0.75;
       ctx.font = `bold ${fs}px monospace`;
-      hudText(`⚡ SPD  ${player.speed.toFixed(1)}`,          pad, y0,          '#00ddff');
-      hudText(`🔥 TIR  ${(60/player.fireCD).toFixed(1)}/s`,  pad, y0 + lh,     '#ffaa00');
-      hudText(`☠ TUÉS ${kills}`,                              pad, y0 + lh * 2, '#ff6677');
-      const niv = diff.niveau || 1;
+      const niv      = diff.niveau || 1;
       const nivColor = niv <= 3 ? '#88ff88' : niv <= 6 ? '#ffaa00' : '#ff4444';
-      hudText(`★ NIV  ${niv}`,                                pad, y0 + lh * 3, nivColor);
+      hudText(`⚡  ${player.speed.toFixed(1)}`,           pad, y0,          '#00ccff');
+      hudText(`🔥  ${(60/player.fireCD).toFixed(1)}/s`,   pad, y0 + lh,     '#ffaa00');
+      hudText(`☠   ${kills} kills`,                        pad, y0 + lh * 2, '#ff6677');
+      hudText(`★   NIV ${niv}`,                            pad, y0 + lh * 3, nivColor);
 
-      // Timer centré en haut avec fond
-      const timerFont = Math.round(24 * s);
+      // ── Purge — toujours visible ──
+      const pY = y0 + lh * 4;
+      ctx.font = `bold ${fs}px monospace`;
+      if (purgeStock > 0) {
+        hudText(`✨  x${purgeStock}  [SPC]`, pad, pY, '#ffffff');
+      } else {
+        hudText(`✨  x0`, pad, pY, 'rgba(255,255,255,0.22)');
+      }
+
+      // ── Missile — toujours visible ──
+      const mY = y0 + lh * 5;
+      if (missileStock > 0) {
+        hudText(`🚀  x${missileStock}  [CLIC D]`, pad, mY, '#ff6622');
+      } else {
+        hudText(`🚀  x0`, pad, mY, 'rgba(255,100,30,0.22)');
+      }
+
+      // ── Cercle de feu — ligne + barre ──
+      if (hasCircle) {
+        const bY  = y0 + lh * 6;
+        const bH2 = Math.round(14 * s);
+        ctx.font = `bold ${fs}px monospace`;
+        hudText(`🌀  CERCLE`, pad, bY, '#ff9900');
+        const barY2 = bY + Math.round(4 * s);
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.beginPath(); ctx.roundRect(pad, barY2, barW, bH2, 3); ctx.fill();
+        ctx.fillStyle = '#ff9900';
+        ctx.beginPath(); ctx.roundRect(pad, barY2, barW * (player.circleFire / 1800), bH2, 3); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,153,0,0.3)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.roundRect(pad, barY2, barW, bH2, 3); ctx.stroke();
+      }
+
+      // ── Timer centré en haut ──
+      const timerFont = Math.round(26 * s);
       const timerText = formatTime(finalTime);
       ctx.font = `bold ${timerFont}px monospace`;
       const tw = ctx.measureText(timerText).width;
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      ctx.beginPath();
-      ctx.roundRect(MAP_W / 2 - tw / 2 - 10, pad - 6, tw + 20, timerFont + 8, 8);
-      ctx.fill();
+      ctx.fillStyle = 'rgba(4,8,20,0.65)';
+      ctx.beginPath(); ctx.roundRect(MAP_W / 2 - tw / 2 - 14, pad - 8, tw + 28, timerFont + 10, 8); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(MAP_W / 2 - tw / 2 - 14, pad - 8, tw + 28, timerFont + 10, 8); ctx.stroke();
       ctx.textAlign = 'center';
-      hudText(timerText, MAP_W / 2, pad + timerFont - 2, 'white');
+      hudText(timerText, MAP_W / 2, pad + timerFont, 'white');
       ctx.textAlign = 'left';
-
-      // Stock purges
-      if (purgeStock > 0) {
-        const pY = pad + barH + lh * 5 + Math.round(6 * s);
-        ctx.fillStyle = 'rgba(0,0,0,0.5)';
-        ctx.beginPath(); ctx.roundRect(pad - 6, pY - 14, Math.round(140 * s) + 12, lh + 4, 6); ctx.fill();
-        ctx.font = `bold ${Math.round(10 * s)}px monospace`;
-        hudText(`✨ PURGE  x${purgeStock}  [ESPACE / Y]`, pad, pY, '#ffffff');
-      }
-
-      // Barre durée cercle de feu
-      if (player.circleFire > 0) {
-        const bW = Math.round(140 * s), bH = Math.round(10 * s);
-        const bX = pad, bY = pad + barH + lh * 5 + Math.round(6 * s);
-        ctx.fillStyle = 'rgba(0,0,0,0.5)';
-        ctx.beginPath(); ctx.roundRect(bX - 6, bY - 14, bW + 12, bH + 20, 6); ctx.fill();
-        ctx.font = `bold ${Math.round(10 * s)}px monospace`;
-        hudText('🌀 CERCLE DE FEU', bX, bY - 2, '#ff9900');
-        ctx.fillStyle = 'rgba(0,0,0,0.5)';
-        ctx.fillRect(bX, bY + 2, bW, bH);
-        ctx.fillStyle = '#ff9900';
-        ctx.fillRect(bX, bY + 2, bW * (player.circleFire / 1800), bH);
-      }
     }
 
     function drawCrosshair(x, y) {
@@ -1187,6 +1367,11 @@
         const yPressed = gp.buttons[3]?.pressed;
         if (yPressed && !gpPrevY) usePurge();
         gpPrevY = yPressed;
+
+        // X (2) → missile
+        const xPressed = gp.buttons[2]?.pressed;
+        if (xPressed && !gpPrevX) fireMissile();
+        gpPrevX = xPressed;
       }
 
       const len = Math.hypot(dx, dy);
@@ -1199,6 +1384,7 @@
 
       updateEnemies();
       updateBullets();
+      updateMissiles();
       updateDrops();
       updateParticles();
       updateHpHistory();
@@ -1261,6 +1447,7 @@
         ctx.fill();
         ctx.restore();
       }
+      drawMissiles();
       drawHead(player.x, player.y, player.angle);
 
       const barW = 44, barH = 6, barX = player.x - barW / 2, barY = player.y - RADIUS - 14;
@@ -1411,7 +1598,7 @@ function restartGame() {
       particles.length = 0; playerDeathFired = false;
       notifications.length = 0; spawnTimer = 0;
       gameStartTime = Date.now(); finalTime = 0; scoreSaved = false; kills = 0;
-      hpHistory.length = 0; hpSampleTick = 0; player.circleFire = 0; purgeStock = 0;
+      hpHistory.length = 0; hpSampleTick = 0; player.circleFire = 0; purgeStock = 0; missileStock = 0; missiles.length = 0;
     }
 
     document.addEventListener('keydown', e => {
@@ -1591,7 +1778,7 @@ function restartGame() {
         'plus tu dures, plus ça devient ingérable.',
         '',
         'Récolte des items pour survivre :',
-        'vitesse, cadence, vie.',
+        'vitesse, cadence, vie, armes inédites etc...',
         '',
         'Stack des purges et active-les',
         "quand t'es submergé.",
